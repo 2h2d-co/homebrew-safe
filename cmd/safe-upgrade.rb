@@ -103,6 +103,10 @@ module Homebrew
         puts "Upgraded: #{upgraded}#{" (some failures)" if formula_error || cask_error}"
         print_skipped_summary(too_new, unknown, no_cutoff)
 
+        if formula_error && cask_error
+          onoe cask_error.message
+          raise formula_error
+        end
         raise formula_error if formula_error
         raise cask_error if cask_error
       rescue Safe::Config::ConfigError => e
