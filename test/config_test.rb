@@ -179,4 +179,77 @@ class ConfigTest < Minitest::Test
     result = config.resolve_before(type: :formula, full_name: "curl")
     assert_nil result
   end
+
+  # --- has_any_per_item_before? ---
+
+  def test_has_any_per_item_before_with_formula
+    file = write_config(<<~YAML)
+      formula:
+        node:
+          before: "7d"
+    YAML
+    config = Safe::Config.new(file.path)
+    assert config.has_any_per_item_before?
+  ensure
+    file&.unlink
+  end
+
+  def test_has_any_per_item_before_with_cask
+    file = write_config(<<~YAML)
+      cask:
+        firefox:
+          before: "14d"
+    YAML
+    config = Safe::Config.new(file.path)
+    assert config.has_any_per_item_before?
+  ensure
+    file&.unlink
+  end
+
+  def test_has_any_per_item_before_without_overrides
+    file = write_config("before: '30d'")
+    config = Safe::Config.new(file.path)
+    refute config.has_any_per_item_before?
+  ensure
+    file&.unlink
+  end
+
+  def test_has_any_per_item_before_empty_config
+    config = Safe::Config.new("/nonexistent/config.yaml")
+    refute config.has_any_per_item_before?
+  end
+
+  # --- validation ---
+
+  def test_non_hash_root_raises_config_error
+    file = write_config("- item1\n- item2")
+    assert_raises(Safe::Config::ConfigError) do
+      Safe::Config.new(file.path)
+    end
+  ensure
+    file&.unlink
+  end
+
+  def test_invalid_yaml_syntax_raises_config_error
+    file = write_config("before: [invalid yaml")
+    assert_raises(Safe::Config::ConfigError) do
+      Safe::Config.new(file.path)
+    end
+  ensure
+    file&.unlink
+  end
+
+  def test_before_for_returns_string
+    file = write_config(<<~YAML)
+      before: 30
+      formula:
+        node:
+          before: 7
+    YAML
+    config = Safe::Config.new(file.path)
+    assert_equal "30", config.global_before
+    assert_equal "7", config.before_for(:formula, "node")
+  ensure
+    file&.unlink
+  end
 end

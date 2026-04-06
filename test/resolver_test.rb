@@ -86,10 +86,9 @@ class ResolverLogicTest < Minitest::Test
   # --- Candidate struct ---
 
   def test_candidate_struct_fields
-    # Define locally to avoid requiring full Homebrew runtime via resolver.rb
     candidate_class = Struct.new(
       :item, :type, :installed_version, :latest_version,
-      :publication_date, :cutoff, :safe, :date_unknown,
+      :publication_date, :cutoff, :safe, :date_unknown, :no_cutoff,
       keyword_init: true,
     )
     candidate = candidate_class.new(
@@ -101,6 +100,7 @@ class ResolverLogicTest < Minitest::Test
       cutoff: Time.new(2026, 1, 1),
       safe: true,
       date_unknown: false,
+      no_cutoff: false,
     )
     assert_equal :formula, candidate.type
     assert_equal "1.0.0", candidate.installed_version
@@ -108,6 +108,18 @@ class ResolverLogicTest < Minitest::Test
     assert_equal "2025-06-15", candidate.publication_date
     assert candidate.safe
     refute candidate.date_unknown
+    refute candidate.no_cutoff
+  end
+
+  def test_no_cutoff_when_before_not_configured
+    # When resolve_before returns nil AND date is known, candidate should be no_cutoff
+    config = Safe::Config.new("/nonexistent/config.yaml")
+    before_value = config.resolve_before(type: :formula, full_name: "curl")
+    publication_date = "2025-06-15"
+    date_unknown = false
+    cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
+    no_cutoff = cutoff.nil? && !date_unknown
+    assert no_cutoff
   end
 
   # --- Pinned formula exclusion logic ---

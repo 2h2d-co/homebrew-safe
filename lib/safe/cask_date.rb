@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "uri"
 require "utils/curl"
 
 module Safe
@@ -24,7 +25,8 @@ module Safe
     end
 
     def self.fetch_last_commit_date(owner_repo, path, auth_header)
-      url = "https://api.github.com/repos/#{owner_repo}/commits?path=#{path}&per_page=1"
+      encoded_path = URI.encode_www_form_component(path)
+      url = "https://api.github.com/repos/#{owner_repo}/commits?path=#{encoded_path}&per_page=1"
       result = Utils::Curl.curl_output(
         url,
         "--header", "Accept: application/vnd.github+json",
@@ -32,25 +34,22 @@ module Safe
       )
 
       unless result.success?
-        return handle_rate_limit(result)
+        # Only treat HTTP 403 as rate limiting; other errors are transient
+        if result.stderr&.include?("403") || result.stdout&.include?("rate limit")
+          @rate_limited = true
+        end
+        return nil
       end
 
       data = JSON.parse(result.stdout)
-      return handle_rate_limit_from_body(data) if data.is_a?(Hash) && data["message"]&.include?("rate limit")
+      if data.is_a?(Hash) && data["message"]&.include?("rate limit")
+        @rate_limited = true
+        return nil
+      end
       return nil unless data.is_a?(Array) && data.first
 
       data.first.dig("commit", "committer", "date")
     rescue JSON::ParserError
-      nil
-    end
-
-    def self.handle_rate_limit(result)
-      @rate_limited = true
-      nil
-    end
-
-    def self.handle_rate_limit_from_body(data)
-      @rate_limited = true
       nil
     end
 
@@ -62,6 +61,6 @@ module Safe
       @rate_limited = false
     end
 
-    private_class_method :fetch_last_commit_date, :handle_rate_limit, :handle_rate_limit_from_body
+    private_class_method :fetch_last_commit_date
   end
 end

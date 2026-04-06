@@ -31,6 +31,7 @@ module Safe
 
       result = Utils::Curl.curl_output(
         manifest_url,
+        # QQ== is base64("") — standard anonymous GHCR access token
         "--header", "Authorization: Bearer QQ==",
         "--header", "Accept: application/vnd.oci.image.index.v1+json",
       )

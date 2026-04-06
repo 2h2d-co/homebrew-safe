@@ -2,6 +2,7 @@
 
 require "abstract_command"
 require "formula"
+require "json"
 require "cask/caskroom"
 
 require_relative "../lib/safe/config"
@@ -39,7 +40,7 @@ module Homebrew
       def run
         config = Safe::Config.new
         before_value = args.before || config.global_before
-        odie <<~EOS.chomp unless before_value || has_any_per_item_config?(config)
+        odie <<~EOS.chomp unless before_value || config.has_any_per_item_before?
           No safety cutoff configured. Set a global 'before' in ~/.config/brew-safe/config.yaml:
 
             before: "30d"
@@ -58,25 +59,22 @@ module Homebrew
 
         pinned = pinned_formulae
         safe = candidates.select(&:safe)
-        too_new = candidates.reject { |c| c.safe || c.date_unknown }
+        too_new = candidates.reject { |c| c.safe || c.date_unknown || c.no_cutoff }
         unknown = candidates.select(&:date_unknown)
+        no_cutoff = candidates.select { |c| c.no_cutoff }
 
         if args.json?
-          print_json(safe, too_new, unknown, pinned)
+          print_json(safe, too_new, unknown, no_cutoff, pinned)
         elsif args.verbose?
-          print_verbose(safe, too_new, unknown, pinned)
+          print_verbose(safe, too_new, unknown, no_cutoff, pinned)
         else
           print_default(safe)
         end
+      rescue Safe::Config::ConfigError => e
+        odie e.message
       end
 
       private
-
-      def has_any_per_item_config?(config)
-        data = config.data
-        (data["formula"]&.any? { |_, v| v.is_a?(Hash) && v["before"] }) ||
-          (data["cask"]&.any? { |_, v| v.is_a?(Hash) && v["before"] })
-      end
 
       def pinned_formulae
         return [] if args.cask?
@@ -95,7 +93,7 @@ module Homebrew
         end
       end
 
-      def print_verbose(safe, too_new, unknown, pinned)
+      def print_verbose(safe, too_new, unknown, no_cutoff, pinned)
         before_label = args.before || Safe::Config.new.global_before || "per-item"
 
         if safe.any?
@@ -125,8 +123,16 @@ module Homebrew
           end
         end
 
-        if pinned.any?
+        if no_cutoff.any?
           puts if safe.any? || too_new.any? || unknown.any?
+          ohai "No cutoff configured (skipped)"
+          no_cutoff.each do |c|
+            puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
+          end
+        end
+
+        if pinned.any?
+          puts if safe.any? || too_new.any? || unknown.any? || no_cutoff.any?
           ohai "Pinned (skipped)"
           pinned.each do |f|
             latest = f.latest_formula
@@ -135,11 +141,12 @@ module Homebrew
         end
       end
 
-      def print_json(safe, too_new, unknown, pinned)
+      def print_json(safe, too_new, unknown, no_cutoff, pinned)
         data = {
           safe: safe.map { |c| candidate_to_hash(c) },
           too_new: too_new.map { |c| candidate_to_hash(c) },
           date_unknown: unknown.map { |c| candidate_to_hash(c) },
+          no_cutoff: no_cutoff.map { |c| candidate_to_hash(c) },
           pinned: pinned.map { |f| { name: f.full_name, installed: f.pkg_version.to_s, latest: f.latest_formula.pkg_version.to_s } },
         }
         puts JSON.pretty_generate(data)

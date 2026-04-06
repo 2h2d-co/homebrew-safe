@@ -39,7 +39,7 @@ module Homebrew
       def run
         config = Safe::Config.new
         before_value = args.before || config.global_before
-        odie <<~EOS.chomp unless before_value || has_any_per_item_config?(config)
+        odie <<~EOS.chomp unless before_value || config.has_any_per_item_before?
           No safety cutoff configured. Set a global 'before' in ~/.config/brew-safe/config.yaml:
 
             before: "30d"
@@ -57,7 +57,7 @@ module Homebrew
         candidates = resolver.resolve
 
         safe = candidates.select(&:safe)
-        too_new = candidates.reject { |c| c.safe || c.date_unknown }
+        too_new = candidates.reject { |c| c.safe || c.date_unknown || c.no_cutoff }
         unknown = candidates.select(&:date_unknown)
 
         if args.dry_run?
@@ -74,8 +74,15 @@ module Homebrew
         safe_formulae = safe.select { |c| c.type == :formula }.map { |c| c.item.full_name }
         safe_casks = safe.select { |c| c.type == :cask }.map { |c| c.item.full_name }
 
+        # Run formula and cask upgrades independently so a failure in one
+        # doesn't prevent the other from running
+        formula_error = nil
         if safe_formulae.any?
-          safe_system HOMEBREW_BREW_FILE, "upgrade", *safe_formulae
+          begin
+            safe_system HOMEBREW_BREW_FILE, "upgrade", *safe_formulae
+          rescue ErrorDuringExecution => e
+            formula_error = e
+          end
         end
 
         if safe_casks.any?
@@ -86,15 +93,13 @@ module Homebrew
         ohai "Summary"
         puts "Upgraded: #{safe.size}"
         print_skipped_summary(too_new, unknown)
+
+        raise formula_error if formula_error
+      rescue Safe::Config::ConfigError => e
+        odie e.message
       end
 
       private
-
-      def has_any_per_item_config?(config)
-        data = config.data
-        (data["formula"]&.any? { |_, v| v.is_a?(Hash) && v["before"] }) ||
-          (data["cask"]&.any? { |_, v| v.is_a?(Hash) && v["before"] })
-      end
 
       def print_dry_run(safe, too_new, unknown)
         if safe.any?

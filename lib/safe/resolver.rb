@@ -9,7 +9,7 @@ module Safe
   class Resolver
     Candidate = Struct.new(
       :item, :type, :installed_version, :latest_version,
-      :publication_date, :cutoff, :safe, :date_unknown,
+      :publication_date, :cutoff, :safe, :date_unknown, :no_cutoff,
       keyword_init: true,
     )
 
@@ -22,11 +22,17 @@ module Safe
     def resolve
       candidates = []
 
-      unless @args.cask?
+      if @args.formula?
         candidates.concat(resolve_formulae)
-      end
-
-      unless @args.formula?
+      elsif @args.cask?
+        candidates.concat(resolve_casks)
+      elsif @args.named.present?
+        # Mixed named args: partition into formulae and casks
+        formulae, casks = @args.named.to_resolved_formulae_to_casks
+        candidates.concat(resolve_formulae(formulae))
+        candidates.concat(resolve_casks(casks))
+      else
+        candidates.concat(resolve_formulae)
         candidates.concat(resolve_casks)
       end
 
@@ -35,8 +41,8 @@ module Safe
 
     private
 
-    def resolve_formulae
-      formulae = if @args.named.present?
+    def resolve_formulae(formulae = nil)
+      formulae ||= if @args.named.present? && @args.formula?
         @args.named.to_resolved_formulae
       else
         Formula.installed
@@ -44,7 +50,7 @@ module Safe
 
       formulae.select { |f| f.outdated? }.reject { |f| f.pinned? }.filter_map do |f|
         if f.head? && !f.stable
-          opoo "#{f.full_name}: HEAD-only install, skipping"
+          Homebrew.opoo "#{f.full_name}: HEAD-only install, skipping"
           next
         end
 
@@ -59,6 +65,7 @@ module Safe
         date_unknown = publication_date.nil?
 
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
+        no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
           false
         else
@@ -74,14 +81,15 @@ module Safe
           cutoff: cutoff,
           safe: is_safe,
           date_unknown: date_unknown,
+          no_cutoff: no_cutoff,
         )
       end
     end
 
-    def resolve_casks
+    def resolve_casks(casks = nil)
       require "cask/caskroom"
 
-      casks = if @args.named.present?
+      casks ||= if @args.named.present? && @args.cask?
         @args.named.to_casks
       else
         Cask::Caskroom.casks
@@ -91,11 +99,12 @@ module Safe
       greedy_latest = @args.respond_to?(:greedy_latest?) ? @args.greedy_latest? : false
       greedy_auto_updates = @args.respond_to?(:greedy_auto_updates?) ? @args.greedy_auto_updates? : false
 
+      results = []
       casks.select { |c|
         c.outdated?(greedy: greedy, greedy_latest: greedy_latest, greedy_auto_updates: greedy_auto_updates)
-      }.filter_map do |c|
+      }.each do |c|
         if Safe::CaskDate.rate_limited?
-          opoo "GitHub API rate limited. Set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
+          Homebrew.opoo "GitHub API rate limited. Set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
           break
         end
 
@@ -109,13 +118,14 @@ module Safe
         date_unknown = publication_date.nil?
 
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
+        no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
           false
         else
           Safe::DateFilter.safe?(publication_date, cutoff)
         end
 
-        Candidate.new(
+        results << Candidate.new(
           item: c,
           type: :cask,
           installed_version: installed_version,
@@ -124,12 +134,10 @@ module Safe
           cutoff: cutoff,
           safe: is_safe,
           date_unknown: date_unknown,
+          no_cutoff: no_cutoff,
         )
       end
-    end
-
-    def opoo(msg)
-      $stderr.puts "Warning: #{msg}"
+      results
     end
   end
 end
