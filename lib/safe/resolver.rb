@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require "safe/config"
-require "safe/date_filter"
-require "safe/ghcr_client"
-require "safe/cask_date"
+require_relative "config"
+require_relative "date_filter"
+require_relative "ghcr_client"
+require_relative "cask_date"
 
 module Safe
   class Resolver
