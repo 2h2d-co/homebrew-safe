@@ -59,15 +59,16 @@ module Homebrew
         safe = candidates.select(&:safe)
         too_new = candidates.reject { |c| c.safe || c.date_unknown || c.no_cutoff }
         unknown = candidates.select(&:date_unknown)
+        no_cutoff = candidates.select { |c| c.no_cutoff }
 
         if args.dry_run?
-          print_dry_run(safe, too_new, unknown)
+          print_dry_run(safe, too_new, unknown, no_cutoff)
           return
         end
 
         if safe.empty?
           ohai "Nothing safe to upgrade."
-          print_skipped_summary(too_new, unknown)
+          print_skipped_summary(too_new, unknown, no_cutoff)
           return
         end
 
@@ -76,32 +77,41 @@ module Homebrew
 
         # Run formula and cask upgrades independently so a failure in one
         # doesn't prevent the other from running
+        upgraded = 0
         formula_error = nil
         if safe_formulae.any?
           begin
             safe_system HOMEBREW_BREW_FILE, "upgrade", *safe_formulae
+            upgraded += safe_formulae.size
           rescue ErrorDuringExecution => e
             formula_error = e
           end
         end
 
+        cask_error = nil
         if safe_casks.any?
-          safe_system HOMEBREW_BREW_FILE, "upgrade", "--cask", *safe_casks
+          begin
+            safe_system HOMEBREW_BREW_FILE, "upgrade", "--cask", *safe_casks
+            upgraded += safe_casks.size
+          rescue ErrorDuringExecution => e
+            cask_error = e
+          end
         end
 
         puts
         ohai "Summary"
-        puts "Upgraded: #{safe.size}"
-        print_skipped_summary(too_new, unknown)
+        puts "Upgraded: #{upgraded}#{" (some failures)" if formula_error || cask_error}"
+        print_skipped_summary(too_new, unknown, no_cutoff)
 
         raise formula_error if formula_error
+        raise cask_error if cask_error
       rescue Safe::Config::ConfigError => e
         odie e.message
       end
 
       private
 
-      def print_dry_run(safe, too_new, unknown)
+      def print_dry_run(safe, too_new, unknown, no_cutoff)
         if safe.any?
           ohai "Would upgrade"
           safe.each do |c|
@@ -112,10 +122,10 @@ module Homebrew
           ohai "Nothing safe to upgrade."
         end
 
-        print_skipped_summary(too_new, unknown)
+        print_skipped_summary(too_new, unknown, no_cutoff)
       end
 
-      def print_skipped_summary(too_new, unknown)
+      def print_skipped_summary(too_new, unknown, no_cutoff)
         if too_new.any?
           puts
           ohai "Skipped (too new): #{too_new.size}"
@@ -129,6 +139,14 @@ module Homebrew
           puts
           ohai "Skipped (date unknown): #{unknown.size}"
           unknown.each do |c|
+            puts "  #{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
+          end
+        end
+
+        if no_cutoff.any?
+          puts
+          ohai "Skipped (no cutoff configured): #{no_cutoff.size}"
+          no_cutoff.each do |c|
             puts "  #{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
           end
         end

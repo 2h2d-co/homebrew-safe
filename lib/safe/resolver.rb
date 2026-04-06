@@ -65,6 +65,9 @@ module Safe
         date_unknown = publication_date.nil?
 
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
+        if before_value && cutoff.nil?
+          Homebrew.opoo "#{f.full_name}: invalid 'before' value '#{before_value}', skipping"
+        end
         no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
           false
@@ -118,6 +121,9 @@ module Safe
         date_unknown = publication_date.nil?
 
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
+        if before_value && cutoff.nil?
+          Homebrew.opoo "#{c.full_name}: invalid 'before' value '#{before_value}', skipping"
+        end
         no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
           false

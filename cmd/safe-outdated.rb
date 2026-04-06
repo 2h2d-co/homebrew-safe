@@ -66,7 +66,7 @@ module Homebrew
         if args.json?
           print_json(safe, too_new, unknown, no_cutoff, pinned)
         elsif args.verbose?
-          print_verbose(safe, too_new, unknown, no_cutoff, pinned)
+          print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
         else
           print_default(safe)
         end
@@ -79,11 +79,18 @@ module Homebrew
       def pinned_formulae
         return [] if args.cask?
 
-        if args.named.present?
-          args.named.to_resolved_formulae.select(&:pinned?)
+        formulae = if args.named.present?
+          if args.formula?
+            args.named.to_resolved_formulae
+          else
+            # Mixed args: partition and only use the formula portion
+            f, _ = args.named.to_resolved_formulae_to_casks
+            f
+          end
         else
-          Formula.installed.select(&:pinned?)
+          Formula.installed
         end
+        formulae.select(&:pinned?)
       end
 
       def print_default(safe)
@@ -93,8 +100,8 @@ module Homebrew
         end
       end
 
-      def print_verbose(safe, too_new, unknown, no_cutoff, pinned)
-        before_label = args.before || Safe::Config.new.global_before || "per-item"
+      def print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
+        before_label = args.before || config.global_before || "per-item"
 
         if safe.any?
           ohai "Safe to upgrade (before: #{before_label})"
