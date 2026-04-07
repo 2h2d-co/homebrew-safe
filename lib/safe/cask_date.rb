@@ -19,14 +19,19 @@ module Safe
       return nil unless source_path
 
       repo = "#{tap.user}/#{tap.repository}"
+
+      fetch_last_commit_date(repo, source_path, auth_header)
+    end
+
+    def self.auth_header
+      return @auth_header if defined?(@auth_header)
+
       token = GitHub::API.credentials
-      auth_header = if GitHub::API.credentials_type != :none
+      @auth_header = if token.present?
         ["--header", "Authorization: token #{token}"]
       else
         []
       end
-
-      fetch_last_commit_date(repo, source_path, auth_header)
     end
 
     def self.fetch_last_commit_date(owner_repo, path, auth_header)
@@ -64,6 +69,7 @@ module Safe
 
     def self.reset_rate_limit!
       @rate_limited = false
+      remove_instance_variable(:@auth_header) if defined?(@auth_header)
     end
 
     private_class_method :fetch_last_commit_date
