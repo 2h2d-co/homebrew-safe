@@ -1,0 +1,32 @@
+#!/usr/bin/env zsh
+#MISE description="Tap this repo from the GitHub remote"
+set -euo pipefail
+
+remote_url=$(git remote get-url origin)
+org_repo=${remote_url#*github.com[:/]}
+org_repo=${org_repo%.git}
+org=${org_repo%%/*}
+repo=${org_repo#*/}
+tap_name="${org}/${repo#homebrew-}"
+
+if tap_info=$(brew tap-info --json "$tap_name" 2>/dev/null); then
+  current_remote=$(jq -r '.[0].remote' <<<"$tap_info")
+  # Normalize to org/repo for comparison (Homebrew may store HTTPS, git remote may be SSH)
+  current_normalized=${current_remote#*github.com[:/]}
+  current_normalized=${current_normalized%.git}
+  if [[ "$current_normalized" == "$org_repo" ]]; then
+    echo "$tap_name is already tapped from remote ($current_remote)"
+    exit 0
+  fi
+  echo "Untapping $tap_name (currently from $current_remote)..."
+  brew untap "$tap_name"
+fi
+
+echo "Tapping $tap_name from remote..."
+brew tap "$tap_name"
+tap_info=$(brew tap-info --json "$tap_name")
+jq -r '.[0] | [
+  "Tapped: \(.name // "n/a")",
+  "Remote: \(.remote // "n/a")",
+  "Path: \(.path // "n/a")"
+] | join("\n")' <<<"$tap_info"
