@@ -179,4 +179,24 @@ class DateFilterTest < Minitest::Test
     result = Safe::DateFilter.age_description(date)
     assert_match(/\d+ days? ago/, result)
   end
+
+  # --- malformed input resilience ---
+
+  def test_safe_with_malformed_date_returns_false
+    cutoff = Time.new(2026, 1, 1)
+    refute Safe::DateFilter.safe?("not-a-date", cutoff)
+  end
+
+  def test_age_description_with_malformed_date_returns_nil
+    assert_nil Safe::DateFilter.age_description("not-a-date")
+  end
+
+  # --- age_description with injected now ---
+
+  def test_age_description_with_now_parameter
+    now = Time.parse("2026-04-07T12:00:00Z")
+    date = "2026-03-28T12:00:00Z"
+    result = Safe::DateFilter.age_description(date, now: now)
+    assert_equal "10 days ago", result
+  end
 end

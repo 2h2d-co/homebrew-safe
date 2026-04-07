@@ -46,12 +46,14 @@ module Safe
     def self.safe?(publication_date_string, cutoff_time)
       pub_time = Time.parse(publication_date_string)
       pub_time < cutoff_time
+    rescue ArgumentError
+      false
     end
 
     # Human-readable age description: "280 days ago", "3 months ago", "1 year ago"
-    def self.age_description(date_string)
+    def self.age_description(date_string, now: nil)
       pub_time = Time.parse(date_string)
-      seconds = Time.now - pub_time
+      seconds = (now || Time.now) - pub_time
       days = (seconds / 86_400).to_i
 
       if days < 1
@@ -69,6 +71,8 @@ module Safe
         years = 1 if years < 1
         years == 1 ? "1 year ago" : "#{years} years ago"
       end
+    rescue ArgumentError
+      nil
     end
   end
 end

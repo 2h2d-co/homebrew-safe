@@ -41,6 +41,7 @@ module Safe
         url,
         "--header", "Accept: application/vnd.github+json",
         *auth_header,
+        secrets: [GitHub::API.credentials].compact,
       )
 
       unless result.success?

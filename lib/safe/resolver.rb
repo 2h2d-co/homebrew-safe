@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "set"
 require_relative "config"
 require_relative "date_filter"
 require_relative "ghcr_client"
@@ -67,6 +68,7 @@ module Safe
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
         if before_value && cutoff.nil?
           Homebrew.opoo "#{f.full_name}: invalid 'before' value '#{before_value}', skipping"
+          next
         end
         no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
@@ -103,13 +105,18 @@ module Safe
       greedy_auto_updates = @args.respond_to?(:greedy_auto_updates?) ? @args.greedy_auto_updates? : false
 
       results = []
-      casks.select { |c|
+      seen = Set.new
+      outdated = casks.select { |c|
         c.outdated?(greedy: greedy, greedy_latest: greedy_latest, greedy_auto_updates: greedy_auto_updates)
-      }.each do |c|
+      }
+
+      outdated.each do |c|
         if Safe::CaskDate.rate_limited?
           Homebrew.opoo "GitHub API rate limited. Authenticate with `gh auth login` or set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
           break
         end
+
+        seen << c
 
         installed_version = c.installed_version.to_s
         latest_version = c.version.to_s
@@ -123,6 +130,7 @@ module Safe
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
         if before_value && cutoff.nil?
           Homebrew.opoo "#{c.full_name}: invalid 'before' value '#{before_value}', skipping"
+          next
         end
         no_cutoff = cutoff.nil? && !date_unknown
         is_safe = if date_unknown || cutoff.nil?
@@ -143,6 +151,24 @@ module Safe
           no_cutoff: no_cutoff,
         )
       end
+
+      # Collect remaining casks after rate limit as date_unknown
+      if Safe::CaskDate.rate_limited?
+        outdated.reject { |c| seen.include?(c) }.each do |c|
+          results << Candidate.new(
+            item: c,
+            type: :cask,
+            installed_version: c.installed_version.to_s,
+            latest_version: c.version.to_s,
+            publication_date: nil,
+            cutoff: nil,
+            safe: false,
+            date_unknown: true,
+            no_cutoff: false,
+          )
+        end
+      end
+
       results
     end
   end
