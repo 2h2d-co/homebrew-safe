@@ -3,6 +3,7 @@ ruby = "4.0.2"
 
 [settings]
 lockfile = true
+locked = true
 
 [tasks."tap:local"]
 description = "Tap this repo from the local working directory"
