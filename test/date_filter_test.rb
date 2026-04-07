@@ -152,7 +152,7 @@ class DateFilterTest < Minitest::Test
   end
 
   def test_age_description_one_day
-    date = (Time.now - (1.5 * 86_400)).strftime("%Y-%m-%d")
+    date = (Time.now - (1.5 * 86_400)).strftime("%Y-%m-%dT%H:%M:%SZ")
     assert_equal "1 day ago", Safe::DateFilter.age_description(date)
   end
 

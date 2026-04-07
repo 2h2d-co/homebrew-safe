@@ -107,7 +107,7 @@ module Safe
         c.outdated?(greedy: greedy, greedy_latest: greedy_latest, greedy_auto_updates: greedy_auto_updates)
       }.each do |c|
         if Safe::CaskDate.rate_limited?
-          Homebrew.opoo "GitHub API rate limited. Set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
+          Homebrew.opoo "GitHub API rate limited. Authenticate with `gh auth login` or set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
           break
         end
 

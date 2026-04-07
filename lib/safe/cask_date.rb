@@ -3,6 +3,7 @@
 require "json"
 require "uri"
 require "utils/curl"
+require "utils/github/api"
 
 module Safe
   module CaskDate
@@ -18,8 +19,12 @@ module Safe
       return nil unless source_path
 
       repo = "#{tap.user}/#{tap.repository}"
-      token = ENV["HOMEBREW_GITHUB_API_TOKEN"] || ENV["GITHUB_TOKEN"]
-      auth_header = token ? ["--header", "Authorization: Bearer #{token}"] : []
+      token = GitHub::API.credentials
+      auth_header = if GitHub::API.credentials_type != :none
+        ["--header", "Authorization: token #{token}"]
+      else
+        []
+      end
 
       fetch_last_commit_date(repo, source_path, auth_header)
     end
