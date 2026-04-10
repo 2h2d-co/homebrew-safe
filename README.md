@@ -13,6 +13,7 @@ brew tap 2h2d-co/safe
 ### `brew safe-outdated`
 
 List outdated formulae and casks that are safe to upgrade based on release date.
+Like `brew outdated`, this auto-updates Homebrew first unless `HOMEBREW_NO_AUTO_UPDATE=1` is set.
 
 ```sh
 # List safe-to-upgrade packages (30-day default from config)
@@ -41,6 +42,7 @@ brew safe-outdated node jq curl
 ### `brew safe-upgrade`
 
 Upgrade only the packages that pass the release date safety gate.
+Like `brew upgrade`, this auto-updates Homebrew first unless `HOMEBREW_NO_AUTO_UPDATE=1` is set.
 
 ```sh
 # Upgrade safe packages

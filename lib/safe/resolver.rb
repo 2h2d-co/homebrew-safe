@@ -5,6 +5,7 @@ require_relative "config"
 require_relative "date_filter"
 require_relative "ghcr_client"
 require_relative "cask_date"
+require_relative "version_info"
 
 module Safe
   class Resolver
@@ -57,7 +58,7 @@ module Safe
 
         latest = f.latest_formula
         latest_version = latest.pkg_version.to_s
-        installed_version = f.pkg_version.to_s
+        installed_version = Safe::VersionInfo.formula_installed_version(f)
 
         cli_before = @args.before
         before_value = @config.resolve_before(type: :formula, full_name: f.full_name, cli_before: cli_before)

@@ -8,6 +8,8 @@ require "cask/caskroom"
 require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
+require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/version_info"
 
 module Homebrew
   module Cmd
@@ -38,6 +40,8 @@ module Homebrew
       end
 
       def run
+        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE)
+
         config = Safe::Config.new
         before_value = args.before || config.global_before
         odie <<~EOS.chomp unless before_value || config.has_any_per_item_before?
@@ -143,7 +147,8 @@ module Homebrew
           ohai "Pinned (skipped)"
           pinned.each do |f|
             latest = f.latest_formula
-            puts "#{f.full_name} #{f.pkg_version} -> #{latest.pkg_version}"
+            installed = Safe::VersionInfo.formula_installed_version(f)
+            puts "#{f.full_name} #{installed} -> #{latest.pkg_version}"
           end
         end
       end
@@ -154,7 +159,7 @@ module Homebrew
           too_new: too_new.map { |c| candidate_to_hash(c) },
           date_unknown: unknown.map { |c| candidate_to_hash(c) },
           no_cutoff: no_cutoff.map { |c| candidate_to_hash(c) },
-          pinned: pinned.map { |f| { name: f.full_name, installed: f.pkg_version.to_s, latest: f.latest_formula.pkg_version.to_s } },
+          pinned: pinned.map { |f| { name: f.full_name, installed: Safe::VersionInfo.formula_installed_version(f), latest: f.latest_formula.pkg_version.to_s } },
         }
         puts JSON.pretty_generate(data)
       end

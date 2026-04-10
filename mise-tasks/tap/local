@@ -12,8 +12,17 @@ local_path=$(git rev-parse --show-toplevel)
 
 if tap_info=$(brew tap-info --json "$tap_name" 2>/dev/null); then
   current_remote=$(jq -r '.[0].remote' <<<"$tap_info")
+  tap_path=$(jq -r '.[0].path' <<<"$tap_info")
   if [[ "$current_remote" == "$local_path" ]]; then
     echo "$tap_name is already tapped from $local_path"
+    echo "Refreshing tapped checkout at $tap_path..."
+    brew update-reset "$tap_path"
+    tap_info=$(brew tap-info --json "$tap_name")
+    jq -r '.[0] | [
+      "Tapped: \(.name // "n/a")",
+      "Remote: \(.remote // "n/a")",
+      "Path: \(.path // "n/a")"
+    ] | join("\n")' <<<"$tap_info"
     exit 0
   fi
   echo "Untapping $tap_name (currently from $current_remote)..."
