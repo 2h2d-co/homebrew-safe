@@ -17,12 +17,16 @@ Like `brew outdated`, this auto-updates Homebrew first unless `HOMEBREW_NO_AUTO_
 
 ```sh
 # List safe-to-upgrade packages (30-day default from config)
+# For Homebrew/core formulae, this can surface the latest safe intermediate version
+# if the newest available version is still too new.
 brew safe-outdated
 
 # Override cutoff
 brew safe-outdated --before=7d
 
-# Verbose: shows safe, too-new, date-unknown, and pinned sections
+# Verbose: shows safe, too-new, date-unknown, and pinned sections.
+# Safe entries also show both the chosen safe target and the latest available version
+# when they differ.
 brew safe-outdated --verbose
 
 # JSON output
@@ -43,6 +47,8 @@ brew safe-outdated node jq curl
 
 Upgrade only the packages that pass the release date safety gate.
 Like `brew upgrade`, this auto-updates Homebrew first unless `HOMEBREW_NO_AUTO_UPDATE=1` is set.
+For Homebrew/core formulae, this can upgrade to the latest safe intermediate version
+when the newest version is still too new.
 
 ```sh
 # Upgrade safe packages
@@ -93,13 +99,16 @@ cask:
 
 Looks up the bottle publication date from GHCR (GitHub Container Registry) manifest annotations. This is the date the bottle was published, not when the source was tagged.
 
+If the newest Homebrew/core formula release is too new, `safe-outdated` and `safe-upgrade`
+can walk recent formula history and select the latest safe intermediate bottle instead.
+
 ### Casks
 
 Looks up the last commit date for the cask's source file via the GitHub API. Set `HOMEBREW_GITHUB_API_TOKEN` or `GITHUB_TOKEN` to avoid rate limits.
 
 ### Safety logic
 
-A package is "safe to upgrade" when its publication date is older than the configured cutoff. Packages with unknown dates (custom taps, non-GHCR bottles) are skipped with a warning.
+A package is "safe to upgrade" when its publication date is older than the configured cutoff. For Homebrew/core formulae, this may be the newest available version or the latest safe intermediate version. Packages with unknown dates (custom taps, non-GHCR bottles) are skipped with a warning.
 
 ## License
 

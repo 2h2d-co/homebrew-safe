@@ -15,10 +15,19 @@ module Safe
       root_url = bottle_spec.root_url
       return nil unless root_url&.include?("ghcr.io")
 
-      slug = formula.name.tr("@", "/").tr("+", "x")
-      rebuild = bottle_spec.rebuild
-      version = formula.pkg_version.to_s
-      tag = rebuild.positive? ? "#{version}-#{rebuild}" : version
+      publication_date_for(
+        name: formula.name,
+        version: formula.pkg_version.to_s,
+        rebuild: bottle_spec.rebuild,
+        root_url: root_url,
+      )
+    end
+
+    def self.publication_date_for(name:, version:, rebuild: 0, root_url:)
+      return nil unless root_url&.include?("ghcr.io")
+
+      slug = name.tr("@", "/").tr("+", "x")
+      tag = rebuild.to_i.positive? ? "#{version}-#{rebuild}" : version
 
       # Derive org/repo from root_url: https://ghcr.io/v2/homebrew/core → org=homebrew, repo=core
       match = root_url.match(%r{ghcr\.io/v2/([\w-]+)/([\w-]+)})

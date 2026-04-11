@@ -8,6 +8,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/homebrew_core_formula_upgrader"
 
 module Homebrew
   module Cmd
@@ -41,6 +42,7 @@ module Homebrew
         Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE)
 
         config = Safe::Config.new
+        @config = config
         before_value = args.before || config.global_before
         odie <<~EOS.chomp unless before_value || config.has_any_per_item_before?
           No safety cutoff configured. Set a global 'before' in ~/.config/brew-safe/config.yaml:
@@ -75,17 +77,29 @@ module Homebrew
           return
         end
 
-        safe_formulae = safe.select { |c| c.type == :formula }.map { |c| c.item.full_name }
+        safe_formulae = safe.select { |c| c.type == :formula }
+        direct_formulae = safe_formulae.reject { |c| intermediate_target?(c) }
+        historical_formulae = safe_formulae.select { |c| intermediate_target?(c) }
         safe_casks = safe.select { |c| c.type == :cask }.map { |c| c.item.full_name }
 
         # Run formula and cask upgrades independently so a failure in one
         # doesn't prevent the other from running
         upgraded = 0
         formula_error = nil
-        if safe_formulae.any?
+        if direct_formulae.any? || historical_formulae.any?
           begin
-            safe_system HOMEBREW_BREW_FILE, "upgrade", *safe_formulae
-            upgraded += safe_formulae.size
+            if direct_formulae.any?
+              safe_system brew_env, HOMEBREW_BREW_FILE, "upgrade", "--formula", *direct_formulae.map { |c| c.item.full_name }
+              upgraded += direct_formulae.size
+            end
+
+            if historical_formulae.any?
+              upgrader = Safe::HomebrewCoreFormulaUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
+              historical_formulae.each do |candidate|
+                upgrader.upgrade!(candidate)
+                upgraded += 1
+              end
+            end
           rescue ErrorDuringExecution => e
             formula_error = e
           end
@@ -94,7 +108,7 @@ module Homebrew
         cask_error = nil
         if safe_casks.any?
           begin
-            safe_system HOMEBREW_BREW_FILE, "upgrade", "--cask", *safe_casks
+            safe_system brew_env, HOMEBREW_BREW_FILE, "upgrade", "--cask", *safe_casks
             upgraded += safe_casks.size
           rescue ErrorDuringExecution => e
             cask_error = e
@@ -122,8 +136,17 @@ module Homebrew
         if safe.any?
           ohai "Would upgrade"
           safe.each do |c|
-            date_info = c.publication_date ? " (released #{c.publication_date.split("T").first})" : ""
-            puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version}#{date_info}"
+            cutoff = cutoff_annotation(c)
+            label = "#{c.item.full_name}#{cutoff}"
+            if intermediate_target?(c)
+              safe_date = safe_publication_date(c)
+              latest_date = c.publication_date
+              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first})"
+            else
+              date = safe_publication_date(c)
+              date_info = date ? " (released #{date.split("T").first})" : ""
+              puts "#{label} #{c.installed_version} -> #{target_version(c)}#{date_info}"
+            end
           end
         else
           ohai "Nothing safe to upgrade."
@@ -157,6 +180,33 @@ module Homebrew
             puts "  #{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
           end
         end
+      end
+
+      def cutoff_annotation(candidate)
+        effective_before = candidate.before_value
+        default_before = @config&.global_before
+        return "" if effective_before.nil?
+        return " [before: #{effective_before}]" if args.before
+        return " [before: #{effective_before}]" if default_before.nil?
+        return "" if effective_before == default_before
+
+        " [before: #{effective_before}]"
+      end
+
+      def target_version(candidate)
+        candidate.target_version || candidate.latest_version
+      end
+
+      def safe_publication_date(candidate)
+        candidate.target_publication_date || candidate.publication_date
+      end
+
+      def intermediate_target?(candidate)
+        candidate.target_version && candidate.latest_version && candidate.target_version != candidate.latest_version
+      end
+
+      def brew_env
+        { "HOMEBREW_NO_AUTO_UPDATE" => "1" }
       end
     end
   end

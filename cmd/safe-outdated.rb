@@ -99,20 +99,31 @@ module Homebrew
 
       def print_default(safe)
         safe.each do |c|
-          date_info = c.publication_date ? ", released #{c.publication_date.split("T").first}" : ""
-          puts "#{c.item.full_name} (#{c.installed_version} -> #{c.latest_version}#{date_info})"
+          date = safe_publication_date(c)
+          date_info = date ? ", released #{date.split("T").first}" : ""
+          puts "#{c.item.full_name} (#{c.installed_version} -> #{target_version(c)}#{date_info})"
         end
       end
 
       def print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
-        before_label = args.before || config.global_before || "per-item"
+        header = verbose_header(config)
 
         if safe.any?
-          ohai "Safe to upgrade (before: #{before_label})"
+          ohai header
           safe.each do |c|
-            age = c.publication_date ? Safe::DateFilter.age_description(c.publication_date) : ""
-            date = c.publication_date ? c.publication_date.split("T").first : ""
-            puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version} (released #{date}, #{age})"
+            cutoff = cutoff_annotation(c, config)
+            label = "#{c.item.full_name}#{cutoff}"
+            if intermediate_target?(c)
+              safe_date = safe_publication_date(c)
+              latest_date = c.publication_date
+              safe_age = safe_date ? Safe::DateFilter.age_description(safe_date) : ""
+              latest_age = latest_date ? Safe::DateFilter.age_description(latest_date) : ""
+              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}, #{safe_age}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first}, #{latest_age})"
+            else
+              date = safe_publication_date(c)
+              age = date ? Safe::DateFilter.age_description(date) : ""
+              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{date&.split("T")&.first}, #{age})"
+            end
           end
         end
 
@@ -169,10 +180,43 @@ module Homebrew
           name: c.item.full_name,
           type: c.type.to_s,
           installed: c.installed_version,
+          target: c.target_version,
+          target_publication_date: c.target_publication_date,
           latest: c.latest_version,
-          publication_date: c.publication_date,
+          latest_publication_date: c.publication_date,
+          before: c.before_value,
           safe: c.safe,
         }
+      end
+
+      def verbose_header(config)
+        return "Safe to upgrade (default before: #{config.global_before})" if config.global_before
+        return "Safe to upgrade (before: #{args.before})" if args.before
+
+        "Safe to upgrade"
+      end
+
+      def cutoff_annotation(candidate, config)
+        effective_before = candidate.before_value
+        default_before = config.global_before
+        return "" if effective_before.nil?
+        return " [before: #{effective_before}]" if args.before
+        return " [before: #{effective_before}]" if default_before.nil?
+        return "" if effective_before == default_before
+
+        " [before: #{effective_before}]"
+      end
+
+      def target_version(candidate)
+        candidate.target_version || candidate.latest_version
+      end
+
+      def safe_publication_date(candidate)
+        candidate.target_publication_date || candidate.publication_date
+      end
+
+      def intermediate_target?(candidate)
+        candidate.target_version && candidate.latest_version && candidate.target_version != candidate.latest_version
       end
     end
   end

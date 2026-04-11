@@ -6,12 +6,14 @@ require_relative "date_filter"
 require_relative "ghcr_client"
 require_relative "cask_date"
 require_relative "version_info"
+require_relative "formula_history"
 
 module Safe
   class Resolver
     Candidate = Struct.new(
-      :item, :type, :installed_version, :latest_version,
-      :publication_date, :cutoff, :safe, :date_unknown, :no_cutoff,
+      :item, :type, :installed_version, :target_version, :latest_version,
+      :target_publication_date, :publication_date, :before_value, :cutoff, :safe, :date_unknown, :no_cutoff,
+      :upgrade_commit_sha, :upgrade_source_path,
       keyword_init: true,
     )
 
@@ -72,22 +74,53 @@ module Safe
           next
         end
         no_cutoff = cutoff.nil? && !date_unknown
+
+        target_version = nil
+        target_publication_date = nil
+        upgrade_commit_sha = nil
+        upgrade_source_path = nil
+
         is_safe = if date_unknown || cutoff.nil?
           false
+        elsif Safe::DateFilter.safe?(publication_date, cutoff)
+          target_version = latest_version
+          target_publication_date = publication_date
+          true
         else
-          Safe::DateFilter.safe?(publication_date, cutoff)
+          history = Safe::FormulaHistory.new
+          historical_target = history.latest_safe_intermediate(
+            formula: f,
+            installed_versions: installed_versions(installed_version),
+            latest_version: latest_version,
+            cutoff: cutoff,
+          )
+
+          if historical_target
+            target_version = historical_target.version
+            target_publication_date = historical_target.publication_date
+            upgrade_commit_sha = historical_target.commit_sha
+            upgrade_source_path = historical_target.path
+            true
+          else
+            false
+          end
         end
 
         Candidate.new(
           item: f,
           type: :formula,
           installed_version: installed_version,
+          target_version: target_version,
           latest_version: latest_version,
+          target_publication_date: target_publication_date,
           publication_date: publication_date,
+          before_value: before_value,
           cutoff: cutoff,
           safe: is_safe,
           date_unknown: date_unknown,
           no_cutoff: no_cutoff,
+          upgrade_commit_sha: upgrade_commit_sha,
+          upgrade_source_path: upgrade_source_path,
         )
       end
     end
@@ -144,12 +177,17 @@ module Safe
           item: c,
           type: :cask,
           installed_version: installed_version,
+          target_version: is_safe ? latest_version : nil,
           latest_version: latest_version,
+          target_publication_date: is_safe ? publication_date : nil,
           publication_date: publication_date,
+          before_value: before_value,
           cutoff: cutoff,
           safe: is_safe,
           date_unknown: date_unknown,
           no_cutoff: no_cutoff,
+          upgrade_commit_sha: nil,
+          upgrade_source_path: nil,
         )
       end
 
@@ -160,17 +198,26 @@ module Safe
             item: c,
             type: :cask,
             installed_version: c.installed_version.to_s,
+            target_version: nil,
             latest_version: c.version.to_s,
+            target_publication_date: nil,
             publication_date: nil,
+            before_value: nil,
             cutoff: nil,
             safe: false,
             date_unknown: true,
             no_cutoff: false,
+            upgrade_commit_sha: nil,
+            upgrade_source_path: nil,
           )
         end
       end
 
       results
+    end
+
+    def installed_versions(installed_version)
+      installed_version.to_s.split(",").map(&:strip).reject(&:empty?)
     end
   end
 end

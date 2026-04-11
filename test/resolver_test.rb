@@ -87,25 +87,34 @@ class ResolverLogicTest < Minitest::Test
 
   def test_candidate_struct_fields
     candidate_class = Struct.new(
-      :item, :type, :installed_version, :latest_version,
-      :publication_date, :cutoff, :safe, :date_unknown, :no_cutoff,
+      :item, :type, :installed_version, :target_version, :latest_version,
+      :target_publication_date, :publication_date, :before_value, :cutoff, :safe, :date_unknown, :no_cutoff,
+      :upgrade_commit_sha, :upgrade_source_path,
       keyword_init: true,
     )
     candidate = candidate_class.new(
       item: nil,
       type: :formula,
       installed_version: "1.0.0",
-      latest_version: "2.0.0",
+      target_version: "2.0.0",
+      latest_version: "2.0.1",
+      target_publication_date: "2025-06-10",
       publication_date: "2025-06-15",
+      before_value: "7d",
       cutoff: Time.new(2026, 1, 1),
       safe: true,
       date_unknown: false,
       no_cutoff: false,
+      upgrade_commit_sha: "abc123",
+      upgrade_source_path: "Formula/j/jq.rb",
     )
     assert_equal :formula, candidate.type
     assert_equal "1.0.0", candidate.installed_version
-    assert_equal "2.0.0", candidate.latest_version
+    assert_equal "2.0.0", candidate.target_version
+    assert_equal "2.0.1", candidate.latest_version
+    assert_equal "2025-06-10", candidate.target_publication_date
     assert_equal "2025-06-15", candidate.publication_date
+    assert_equal "7d", candidate.before_value
     assert candidate.safe
     refute candidate.date_unknown
     refute candidate.no_cutoff
