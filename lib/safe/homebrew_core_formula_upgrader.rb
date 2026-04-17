@@ -72,6 +72,7 @@ module Safe
         brew_env,
         @brew_file,
         "tap",
+        "--force",
         "homebrew/core",
       )
     end

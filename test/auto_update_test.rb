@@ -29,39 +29,67 @@ class AutoUpdateTest < Minitest::Test
     end
   end
 
-  def test_run_if_needed_invokes_brew_update_if_needed
+  def test_run_if_needed_invokes_brew_update_if_needed_and_reexecs_command
     runner = FakeRunner.new
+    reexec_args = nil
 
     with_env(
       "HOMEBREW_NO_AUTO_UPDATE" => nil,
       "HOMEBREW_AUTO_UPDATING" => nil,
       "HOMEBREW_AUTO_UPDATE_CHECKED" => nil,
+      "HOMEBREW_COMMAND" => "safe-outdated",
     ) do
-      Safe::AutoUpdate.run_if_needed!(runner: runner, brew_file: "/opt/homebrew/bin/brew")
+      Safe::AutoUpdate.run_if_needed!(
+        runner: runner,
+        brew_file: "/opt/homebrew/bin/brew",
+        argv: ["--verbose"],
+        reexec: ->(*args) { reexec_args = args },
+      )
 
       assert_equal [["/opt/homebrew/bin/brew", "update-if-needed"]], runner.calls
       assert_equal "1", ENV["HOMEBREW_AUTO_UPDATE_CHECKED"]
       assert_equal "1", ENV["HOMEBREW_NO_AUTO_UPDATE"]
+      assert_equal [
+        {
+          "HOMEBREW_AUTO_UPDATE_CHECKED" => "1",
+          "HOMEBREW_NO_AUTO_UPDATE" => "1",
+        },
+        "/opt/homebrew/bin/brew",
+        "safe-outdated",
+        "--verbose",
+      ], reexec_args
     end
   end
 
   def test_run_if_needed_is_skipped_when_auto_updates_are_disabled
     runner = FakeRunner.new
+    reexec_called = false
 
     with_env("HOMEBREW_NO_AUTO_UPDATE" => "1", "HOMEBREW_AUTO_UPDATING" => nil) do
-      Safe::AutoUpdate.run_if_needed!(runner: runner, brew_file: "/opt/homebrew/bin/brew")
+      Safe::AutoUpdate.run_if_needed!(
+        runner: runner,
+        brew_file: "/opt/homebrew/bin/brew",
+        reexec: ->(*) { reexec_called = true },
+      )
 
       assert_empty runner.calls
+      refute reexec_called
     end
   end
 
   def test_run_if_needed_is_skipped_while_auto_updating
     runner = FakeRunner.new
+    reexec_called = false
 
     with_env("HOMEBREW_NO_AUTO_UPDATE" => nil, "HOMEBREW_AUTO_UPDATING" => "1") do
-      Safe::AutoUpdate.run_if_needed!(runner: runner, brew_file: "/opt/homebrew/bin/brew")
+      Safe::AutoUpdate.run_if_needed!(
+        runner: runner,
+        brew_file: "/opt/homebrew/bin/brew",
+        reexec: ->(*) { reexec_called = true },
+      )
 
       assert_empty runner.calls
+      refute reexec_called
     end
   end
 end
