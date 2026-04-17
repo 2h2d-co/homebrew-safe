@@ -43,7 +43,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
-  def test_upgrade_taps_homebrew_core_with_force_when_needed
+  def test_upgrade_uses_minimal_local_core_path_when_core_is_not_tapped
     Dir.mktmpdir do |dir|
       with_homebrew_library(Pathname(dir)) do
         runner = FakeRunner.new
@@ -64,15 +64,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
 
         upgrader.upgrade!(candidate)
 
-        assert_equal [
-          { "HOMEBREW_NO_AUTO_UPDATE" => "1" },
-          "/opt/homebrew/bin/brew",
-          "tap",
-          "--force",
-          "homebrew/core",
-        ], runner.calls[0]
-
-        assert_equal [
+        assert_equal [[
           {
             "HOMEBREW_NO_AUTO_UPDATE" => "1",
             "HOMEBREW_NO_INSTALL_FROM_API" => "1",
@@ -81,14 +73,51 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
           "upgrade",
           "--formula",
           "mise",
-        ], runner.calls[1]
+        ]], runner.calls
 
-        assert_equal [
-          { "HOMEBREW_NO_AUTO_UPDATE" => "1" },
+        tap_path = Pathname(dir)/"Taps/homebrew/homebrew-core"
+        refute tap_path.exist?
+      end
+    end
+  end
+
+  def test_upgrade_restores_existing_formula_file_in_local_core_path
+    Dir.mktmpdir do |dir|
+      with_homebrew_library(Pathname(dir)) do
+        tap_path = Pathname(dir)/"Taps/homebrew/homebrew-core"
+        formula_path = tap_path/"Formula/m/mise.rb"
+        formula_path.dirname.mkpath
+        formula_path.write("class Mise < Formula\n  desc \"current\"\nend\n")
+
+        runner = FakeRunner.new
+        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+          runner: runner,
+          brew_file: "/opt/homebrew/bin/brew",
+        )
+        upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula\n  desc \"historical\"\nend\n"))
+
+        candidate = Candidate.new(
+          type: :formula,
+          target_version: "2026.4.11",
+          latest_version: "2026.4.15",
+          upgrade_commit_sha: "abc123",
+          upgrade_source_path: "Formula/m/mise.rb",
+          item: Item.new("mise"),
+        )
+
+        upgrader.upgrade!(candidate)
+
+        assert_equal [[
+          {
+            "HOMEBREW_NO_AUTO_UPDATE" => "1",
+            "HOMEBREW_NO_INSTALL_FROM_API" => "1",
+          },
           "/opt/homebrew/bin/brew",
-          "untap",
-          "homebrew/core",
-        ], runner.calls[2]
+          "upgrade",
+          "--formula",
+          "mise",
+        ]], runner.calls
+        assert_equal "class Mise < Formula\n  desc \"current\"\nend\n", formula_path.read
       end
     end
   end
