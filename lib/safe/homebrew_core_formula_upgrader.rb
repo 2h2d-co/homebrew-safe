@@ -28,18 +28,19 @@ module Safe
 
       current_content = File.read(formula_path) if File.exist?(formula_path)
       # Avoid `brew tap --force homebrew/core`, which clones the full tap.
-      # A minimal local tap directory containing just the historical formula file
-      # is enough for Homebrew to treat `homebrew/core` as installed when
-      # `HOMEBREW_NO_INSTALL_FROM_API=1` is set.
+      # Instead, materialize just the historical formula file under the local
+      # `homebrew/core` path and install that file directly. This preserves the
+      # historical bottle block while still allowing dependencies to resolve via
+      # the Homebrew API on untapped-core installs.
       prepare_local_homebrew_core_formula_path(formula_path)
       File.write(formula_path, historical_content)
 
       @runner.safe_system(
-        brew_env(use_local_core: true),
+        brew_env,
         @brew_file,
-        "upgrade",
+        "install",
         "--formula",
-        candidate.item.full_name,
+        formula_path,
       )
     ensure
       restore_formula_file(formula_path, current_content) if defined?(formula_path)
@@ -104,10 +105,8 @@ module Safe
       end
     end
 
-    def brew_env(use_local_core: false)
-      env = { "HOMEBREW_NO_AUTO_UPDATE" => "1" }
-      env["HOMEBREW_NO_INSTALL_FROM_API"] = "1" if use_local_core
-      env
+    def brew_env
+      { "HOMEBREW_NO_AUTO_UPDATE" => "1" }
     end
   end
 end
