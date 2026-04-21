@@ -39,7 +39,7 @@ module Homebrew
       end
 
       def run
-        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE)
+        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE, command: "safe-upgrade")
 
         config = Safe::Config.new
         @config = config

@@ -40,7 +40,7 @@ module Homebrew
       end
 
       def run
-        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE)
+        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE, command: "safe-outdated")
 
         config = Safe::Config.new
         before_value = args.before || config.global_before
@@ -69,7 +69,7 @@ module Homebrew
 
         if args.json?
           print_json(safe, too_new, unknown, no_cutoff, pinned)
-        elsif args.verbose?
+        elsif verbose_output?
           print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
         else
           print_default(safe)
@@ -217,6 +217,10 @@ module Homebrew
 
       def intermediate_target?(candidate)
         candidate.target_version && candidate.latest_version && candidate.target_version != candidate.latest_version
+      end
+
+      def verbose_output?
+        args.verbose? || ENV[Safe::AutoUpdate::COMMAND_VERBOSE_ENV] == "1"
       end
     end
   end
