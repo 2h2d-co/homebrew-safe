@@ -156,6 +156,12 @@ class DateFilterTest < Minitest::Test
     assert_equal "1 day ago", Safe::DateFilter.age_description(date)
   end
 
+  def test_age_description_uses_calendar_days_not_elapsed_hours
+    now = Time.parse("2026-05-14T01:00:00Z")
+    date = "2026-05-13T23:00:00Z"
+    assert_equal "1 day ago", Safe::DateFilter.age_description(date, now: now)
+  end
+
   def test_age_description_months
     date = (Time.now - (90 * 86_400)).strftime("%Y-%m-%d")
     result = Safe::DateFilter.age_description(date)

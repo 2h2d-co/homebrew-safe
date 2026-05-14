@@ -53,8 +53,8 @@ module Safe
     # Human-readable age description: "280 days ago", "3 months ago", "1 year ago"
     def self.age_description(date_string, now: nil)
       pub_time = Time.parse(date_string)
-      seconds = (now || Time.now) - pub_time
-      days = (seconds / 86_400).to_i
+      ref_time = now || Time.now
+      days = (ref_time.to_date - pub_time.to_date).to_i
 
       if days < 1
         "today"
