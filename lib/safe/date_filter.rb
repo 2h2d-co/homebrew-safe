@@ -50,7 +50,9 @@ module Safe
       false
     end
 
-    # Human-readable age description: "280 days ago", "3 months ago", "1 year ago"
+    # Human-readable age description based on calendar-day differences:
+    # same day/future => "today"; 1 day => "1 day ago"; 2-59 days => "N days ago";
+    # 60-364 days => rounded "N months ago"; 365+ days => rounded "N year(s) ago".
     def self.age_description(date_string, now: nil)
       pub_time = Time.parse(date_string)
       ref_time = now || Time.now
@@ -65,7 +67,7 @@ module Safe
       elsif days < 365
         months = (days / 30.0).round
         months = 1 if months < 1
-        months == 1 ? "1 month ago" : "#{months} months ago"
+        "#{months} months ago"
       else
         years = (days / 365.0).round
         years = 1 if years < 1

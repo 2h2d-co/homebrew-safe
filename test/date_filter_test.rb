@@ -142,18 +142,18 @@ class DateFilterTest < Minitest::Test
   # --- age_description ---
 
   def test_age_description_today
-    date = Time.now.strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert_equal "today", Safe::DateFilter.age_description(date)
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "today", Safe::DateFilter.age_description("2026-05-14T00:00:00Z", now: now)
   end
 
-  def test_age_description_days
-    date = (Time.now - (10 * 86_400)).strftime("%Y-%m-%d")
-    assert_equal "10 days ago", Safe::DateFilter.age_description(date)
+  def test_age_description_future_dates_are_today
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "today", Safe::DateFilter.age_description("2026-05-15T00:00:00Z", now: now)
   end
 
   def test_age_description_one_day
-    date = (Time.now - (1.5 * 86_400)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert_equal "1 day ago", Safe::DateFilter.age_description(date)
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "1 day ago", Safe::DateFilter.age_description("2026-05-13T00:00:00Z", now: now)
   end
 
   def test_age_description_uses_calendar_days_not_elapsed_hours
@@ -162,28 +162,50 @@ class DateFilterTest < Minitest::Test
     assert_equal "1 day ago", Safe::DateFilter.age_description(date, now: now)
   end
 
-  def test_age_description_months
-    date = (Time.now - (90 * 86_400)).strftime("%Y-%m-%d")
-    result = Safe::DateFilter.age_description(date)
-    assert_match(/\d+ months? ago/, result)
+  def test_age_description_plural_days
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "2 days ago", Safe::DateFilter.age_description("2026-05-12T00:00:00Z", now: now)
+    assert_equal "10 days ago", Safe::DateFilter.age_description("2026-05-04T00:00:00Z", now: now)
   end
 
-  def test_age_description_years
-    date = (Time.now - (400 * 86_400)).strftime("%Y-%m-%d")
-    result = Safe::DateFilter.age_description(date)
-    assert_match(/\d+ years? ago/, result)
+  def test_age_description_last_day_before_months
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "59 days ago", Safe::DateFilter.age_description("2026-03-16T00:00:00Z", now: now)
+  end
+
+  def test_age_description_first_day_in_months
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "2 months ago", Safe::DateFilter.age_description("2026-03-15T00:00:00Z", now: now)
+  end
+
+  def test_age_description_plural_months
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "3 months ago", Safe::DateFilter.age_description("2026-02-13T00:00:00Z", now: now)
+  end
+
+  def test_age_description_last_day_before_years
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "12 months ago", Safe::DateFilter.age_description("2025-05-15T00:00:00Z", now: now)
+  end
+
+  def test_age_description_first_day_in_years
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "1 year ago", Safe::DateFilter.age_description("2025-05-14T00:00:00Z", now: now)
+  end
+
+  def test_age_description_plural_years
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "2 years ago", Safe::DateFilter.age_description("2024-05-14T00:00:00Z", now: now)
   end
 
   def test_age_description_date_only_format
-    date = (Time.now - (30 * 86_400)).strftime("%Y-%m-%d")
-    result = Safe::DateFilter.age_description(date)
-    assert_match(/\d+ days? ago/, result)
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "30 days ago", Safe::DateFilter.age_description("2026-04-14", now: now)
   end
 
   def test_age_description_iso8601_format
-    date = (Time.now - (30 * 86_400)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    result = Safe::DateFilter.age_description(date)
-    assert_match(/\d+ days? ago/, result)
+    now = Time.parse("2026-05-14T12:00:00Z")
+    assert_equal "30 days ago", Safe::DateFilter.age_description("2026-04-14T00:00:00Z", now: now)
   end
 
   # --- malformed input resilience ---
