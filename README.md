@@ -52,6 +52,9 @@ brew safe-outdated node jq curl firefox
 
 Upgrade only the packages that pass the release date safety gate.
 Like `brew upgrade`, this auto-updates Homebrew first unless `HOMEBREW_NO_AUTO_UPDATE=1` is set.
+For the internal Homebrew upgrade/install calls, `safe-upgrade` disables Homebrew's
+installed-dependents check so outdated reverse dependencies are not upgraded unless
+they also pass the safety gate.
 For Homebrew/core formulae, this can upgrade to the latest safe intermediate version
 when the newest version is still too new.
 
