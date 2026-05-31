@@ -154,11 +154,12 @@ Run the tests with:
 for t in test/*_test.rb; do ruby -Itest -Ilib "$t"; done
 ```
 
-Useful local tap helpers:
+Useful local command helpers:
 
 ```sh
-mise run tap:local   # tap this working tree
-mise run tap:remote  # tap from the GitHub remote
+mise run safe-outdated -- --verbose mise  # run safe-outdated from this working tree
+mise run safe-upgrade -- --verbose mise   # run safe-upgrade --dry-run from this working tree
+mise run tap:remote                       # tap from the GitHub remote
 ```
 
 ## License

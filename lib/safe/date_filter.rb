@@ -50,28 +50,26 @@ module Safe
       false
     end
 
-    # Human-readable age description based on calendar-day differences:
-    # same day/future => "today"; 1 day => "1 day ago"; 2-59 days => "N days ago";
-    # 60-364 days => rounded "N months ago"; 365+ days => rounded "N year(s) ago".
+    # Human-readable age description for reporting.
+    # Same-date and future timestamps are reported as "today". Older timestamps
+    # report full elapsed hours, rounded down, as either "N hours ago" or
+    # "N days N hours ago".
     def self.age_description(date_string, now: nil)
       pub_time = Time.parse(date_string)
       ref_time = now || Time.now
-      days = (ref_time.to_date - pub_time.to_date).to_i
+      return "today" if pub_time.to_date == ref_time.to_date || pub_time > ref_time
 
-      if days < 1
-        "today"
-      elsif days == 1
-        "1 day ago"
-      elsif days < 60
-        "#{days} days ago"
-      elsif days < 365
-        months = (days / 30.0).round
-        months = 1 if months < 1
-        "#{months} months ago"
+      elapsed_seconds = (ref_time - pub_time).floor
+      if elapsed_seconds < 86_400
+        hours = elapsed_seconds / 3_600
+        "#{hours} #{hours == 1 ? "hour" : "hours"} ago"
       else
-        years = (days / 365.0).round
-        years = 1 if years < 1
-        years == 1 ? "1 year ago" : "#{years} years ago"
+        days = elapsed_seconds / 86_400
+        hours = (elapsed_seconds % 86_400) / 3_600
+        day_description = "#{days} #{days == 1 ? "day" : "days"}"
+        return "#{day_description} ago" if hours.zero?
+
+        "#{day_description} #{hours} #{hours == 1 ? "hour" : "hours"} ago"
       end
     rescue ArgumentError
       nil
