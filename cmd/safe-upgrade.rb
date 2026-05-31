@@ -8,6 +8,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/homebrew_core_formula_upgrader"
 
 module Homebrew
@@ -80,7 +81,7 @@ module Homebrew
         safe_formulae = safe.select { |c| c.type == :formula }
         direct_formulae = safe_formulae.reject { |c| intermediate_target?(c) }
         historical_formulae = safe_formulae.select { |c| intermediate_target?(c) }
-        safe_casks = safe.select { |c| c.type == :cask }.map { |c| c.item.full_name }
+        safe_casks = safe.select { |c| c.type == :cask }
 
         # Run formula and cask upgrades independently so a failure in one
         # doesn't prevent the other from running
@@ -108,8 +109,11 @@ module Homebrew
         cask_error = nil
         if safe_casks.any?
           begin
-            safe_system brew_env, HOMEBREW_BREW_FILE, "upgrade", "--cask", *safe_casks
-            upgraded += safe_casks.size
+            upgrader = Safe::CaskUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
+            safe_casks.each do |candidate|
+              upgrader.upgrade!(candidate)
+              upgraded += 1
+            end
           rescue ErrorDuringExecution => e
             cask_error = e
           end

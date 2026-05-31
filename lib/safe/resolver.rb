@@ -4,7 +4,7 @@ require "set"
 require_relative "config"
 require_relative "date_filter"
 require_relative "ghcr_client"
-require_relative "cask_date"
+require_relative "cask_history"
 require_relative "version_info"
 require_relative "formula_history"
 
@@ -13,7 +13,7 @@ module Safe
     Candidate = Struct.new(
       :item, :type, :installed_version, :target_version, :latest_version,
       :target_publication_date, :publication_date, :before_value, :cutoff, :safe, :date_unknown, :no_cutoff,
-      :upgrade_commit_sha, :upgrade_source_path,
+      :upgrade_commit_sha, :upgrade_source_path, :upgrade_source_content,
       keyword_init: true,
     )
 
@@ -121,6 +121,7 @@ module Safe
           no_cutoff: no_cutoff,
           upgrade_commit_sha: upgrade_commit_sha,
           upgrade_source_path: upgrade_source_path,
+          upgrade_source_content: nil,
         )
       end
     end
@@ -140,12 +141,13 @@ module Safe
 
       results = []
       seen = Set.new
+      history = Safe::CaskHistory.new
       outdated = casks.select { |c|
         c.outdated?(greedy: greedy, greedy_latest: greedy_latest, greedy_auto_updates: greedy_auto_updates)
       }
 
       outdated.each do |c|
-        if Safe::CaskDate.rate_limited?
+        if history.rate_limited?
           Homebrew.opoo "GitHub API rate limited. Authenticate with `gh auth login` or set HOMEBREW_GITHUB_API_TOKEN to continue cask date lookups."
           break
         end
@@ -158,41 +160,47 @@ module Safe
         cli_before = @args.before
         before_value = @config.resolve_before(type: :cask, full_name: c.full_name, cli_before: cli_before)
 
-        publication_date = Safe::CaskDate.last_updated(c)
-        date_unknown = publication_date.nil?
-
         cutoff = before_value ? Safe::DateFilter.parse_cutoff(before_value) : nil
         if before_value && cutoff.nil?
           Homebrew.opoo "#{c.full_name}: invalid 'before' value '#{before_value}', skipping"
           next
         end
+
+        resolution = history.resolve(
+          cask: c,
+          installed_versions: [installed_version],
+          latest_version: latest_version,
+          cutoff: cutoff,
+        )
+        latest_ref = resolution.latest_ref
+        target_ref = resolution.target_ref
+
+        publication_date = latest_ref&.publication_date
+        is_safe = !target_ref.nil?
+        date_unknown = publication_date.nil? && !is_safe
         no_cutoff = cutoff.nil? && !date_unknown
-        is_safe = if date_unknown || cutoff.nil?
-          false
-        else
-          Safe::DateFilter.safe?(publication_date, cutoff)
-        end
 
         results << Candidate.new(
           item: c,
           type: :cask,
           installed_version: installed_version,
-          target_version: is_safe ? latest_version : nil,
+          target_version: target_ref&.version,
           latest_version: latest_version,
-          target_publication_date: is_safe ? publication_date : nil,
+          target_publication_date: target_ref&.publication_date,
           publication_date: publication_date,
           before_value: before_value,
           cutoff: cutoff,
           safe: is_safe,
           date_unknown: date_unknown,
           no_cutoff: no_cutoff,
-          upgrade_commit_sha: nil,
-          upgrade_source_path: nil,
+          upgrade_commit_sha: target_ref&.commit_sha,
+          upgrade_source_path: target_ref&.path,
+          upgrade_source_content: target_ref&.content,
         )
       end
 
       # Collect remaining casks after rate limit as date_unknown
-      if Safe::CaskDate.rate_limited?
+      if history.rate_limited?
         outdated.reject { |c| seen.include?(c) }.each do |c|
           results << Candidate.new(
             item: c,
@@ -209,6 +217,7 @@ module Safe
             no_cutoff: false,
             upgrade_commit_sha: nil,
             upgrade_source_path: nil,
+            upgrade_source_content: nil,
           )
         end
       end

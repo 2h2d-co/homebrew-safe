@@ -132,10 +132,15 @@ for the historical target.
 
 ### Casks
 
-Looks up the last commit date for the cask's source file via the GitHub API. Set `HOMEBREW_GITHUB_API_TOKEN` or `GITHUB_TOKEN` to avoid rate limits.
+Looks up verified GitHub commits for the cask's source file via the GitHub API. Set `HOMEBREW_GITHUB_API_TOKEN` or `GITHUB_TOKEN` to avoid rate limits.
 
-For casks, this date is a proxy for release age. It is not the upstream vendor's
-actual release date.
+For casks, the commit date where a version first appears is used as a proxy for
+release age. It is not the upstream vendor's actual release date.
+
+If the newest cask version is too new, `safe-outdated` and `safe-upgrade` can
+walk recent cask history and select the latest safe intermediate version. Cask
+upgrades are installed from the verified historical cask file through a temporary
+Homebrew tap so Homebrew still verifies the cask checksum.
 
 ### Safety logic
 
