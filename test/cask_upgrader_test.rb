@@ -49,6 +49,7 @@ class CaskUpgraderTest < Minitest::Test
       assert_equal "upgrade", command
       assert_equal "--cask", cask_flag
       assert_equal "1", env.fetch("HOMEBREW_NO_AUTO_UPDATE")
+      assert_equal "1", env.fetch("HOMEBREW_NO_ASK")
       assert_equal "1", env.fetch("HOMEBREW_NO_REQUIRE_TAP_TRUST")
       assert_match %r{/2h2d-co/homebrew-safe-temp-[^/]+/Casks/n/ngrok\.rb\z}, cask_path
       assert_empty Dir.glob(File.join(dir, "2h2d-co", "homebrew-safe-temp-*"))

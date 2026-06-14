@@ -69,6 +69,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         assert_equal [[
           {
             "HOMEBREW_NO_AUTO_UPDATE" => "1",
+            "HOMEBREW_NO_ASK" => "1",
             "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
           },
           "/opt/homebrew/bin/brew",
@@ -112,6 +113,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         assert_equal [[
           {
             "HOMEBREW_NO_AUTO_UPDATE" => "1",
+            "HOMEBREW_NO_ASK" => "1",
             "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
           },
           "/opt/homebrew/bin/brew",

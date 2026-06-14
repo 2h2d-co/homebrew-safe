@@ -212,6 +212,7 @@ module Homebrew
       def brew_env
         {
           "HOMEBREW_NO_AUTO_UPDATE" => "1",
+          "HOMEBREW_NO_ASK" => "1",
           "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
         }
       end

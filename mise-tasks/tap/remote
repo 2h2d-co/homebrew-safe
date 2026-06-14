@@ -20,6 +20,7 @@ if tap_info=$(brew tap-info --json "$tap_name" 2>/dev/null); then
     echo "Refreshing tapped checkout at $tap_path..."
     brew update-reset "$tap_path"
     tap_info=$(brew tap-info --json "$tap_name")
+    brew trust "$tap_name"
     jq -r '.[0] | [
       "Tapped: \(.name // "n/a")",
       "Remote: \(.remote // "n/a")",
@@ -33,6 +34,7 @@ fi
 
 echo "Tapping $tap_name from remote..."
 brew tap "$tap_name"
+brew trust "$tap_name"
 tap_info=$(brew tap-info --json "$tap_name")
 jq -r '.[0] | [
   "Tapped: \(.name // "n/a")",
