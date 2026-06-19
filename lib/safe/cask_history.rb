@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require "json"
 require "rbconfig"
 require "uri"
 
 require_relative "date_filter"
+require_relative "github_api"
 
 module Safe
   class CaskHistory
@@ -147,33 +147,12 @@ module Safe
     end
 
     def fetch_commits_page(repo:, path:, page:)
-      require "utils/curl"
-      require "utils/github/api"
-
       encoded_path = URI.encode_www_form_component(path)
       url = "https://api.github.com/repos/#{repo}/commits?path=#{encoded_path}&per_page=#{COMMITS_PER_PAGE}&page=#{page}"
-      result = Utils::Curl.curl_output(
-        url,
-        "--header", "Accept: application/vnd.github+json",
-        *github_auth_header,
-        secrets: [github_token].compact,
-      )
+      response = Safe::GitHubApi.fetch_array(url)
+      @rate_limited = true if response.rate_limited
 
-      unless result.success?
-        @rate_limited = true if result.stderr&.include?("403") || result.stdout&.include?("rate limit")
-        return []
-      end
-
-      data = JSON.parse(result.stdout)
-      if data.is_a?(Hash) && data["message"]&.include?("rate limit")
-        @rate_limited = true
-        return []
-      end
-      return [] unless data.is_a?(Array)
-
-      data
-    rescue JSON::ParserError
-      []
+      response.data
     end
 
     def fetch_cask_content(repo:, commit_sha:, path:)
@@ -187,19 +166,6 @@ module Safe
       end
 
       result.stdout
-    end
-
-    def github_auth_header
-      token = github_token
-      return [] if token.nil? || token.empty?
-
-      ["--header", "Authorization: token #{token}"]
-    end
-
-    def github_token
-      require "utils/github/api"
-
-      GitHub::API.credentials
     end
 
     def host_arm?

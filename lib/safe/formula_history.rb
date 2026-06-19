@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
-require "json"
 require "set"
 require "uri"
 
 require_relative "date_filter"
+require_relative "github_api"
 
 module Safe
   class FormulaHistory
@@ -173,25 +173,9 @@ module Safe
     end
 
     def fetch_commits_page(path:, page:)
-      require "utils/curl"
-      require "utils/github/api"
-
       encoded_path = URI.encode_www_form_component(path)
       url = "https://api.github.com/repos/Homebrew/homebrew-core/commits?path=#{encoded_path}&per_page=#{COMMITS_PER_PAGE}&page=#{page}"
-      result = Utils::Curl.curl_output(
-        url,
-        "--header", "Accept: application/vnd.github+json",
-        *github_auth_header,
-        secrets: [github_token].compact,
-      )
-      return [] unless result.success?
-
-      data = JSON.parse(result.stdout)
-      return [] unless data.is_a?(Array)
-
-      data
-    rescue JSON::ParserError
-      []
+      Safe::GitHubApi.fetch_array(url).data
     end
 
     def fetch_formula_content(commit_sha:, path:)
@@ -202,19 +186,6 @@ module Safe
       return nil unless result.success?
 
       result.stdout
-    end
-
-    def github_auth_header
-      token = github_token
-      return [] if token.nil? || token.empty?
-
-      ["--header", "Authorization: token #{token}"]
-    end
-
-    def github_token
-      require "utils/github/api"
-
-      GitHub::API.credentials
     end
 
     def lookup_publication_date(name:, version:, rebuild:, root_url:)
