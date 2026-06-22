@@ -4,12 +4,28 @@ Supply-chain safety commands for Homebrew. Prevents upgrading to versions releas
 
 ## Install
 
+Recommended Homebrew formula install:
+
+```sh
+brew install 2h2d-co/tap/brew-safe
+brew safe-outdated --help
+brew safe-upgrade --help
+```
+
+If you previously installed the legacy tap command, untap it so Homebrew uses the formula-provided wrappers:
+
+```sh
+brew untap 2h2d-co/safe
+```
+
+Legacy tap install:
+
 ```sh
 brew tap 2h2d-co/safe
 brew trust 2h2d-co/safe
 ```
 
-Homebrew requires non-official tap commands to be trusted before loading them.
+Homebrew requires non-official tap commands to be trusted before loading them from the legacy tap.
 
 ## Commands
 
