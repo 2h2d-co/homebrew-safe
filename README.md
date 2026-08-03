@@ -186,6 +186,10 @@ mise run safe-upgrade -- --verbose mise   # run safe-upgrade --dry-run from this
 mise run tap:remote                       # tap from the GitHub remote
 ```
 
+## Releases
+
+Release tags must be lightweight tags. Create one with `git tag v<version>`; do not use `git tag -a`, `git tag -s`, `git tag -m`, or `cog bump --annotated`.
+
 ## License
 
 MIT
