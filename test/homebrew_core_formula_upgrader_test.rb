@@ -195,6 +195,23 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     ], runner.calls.map { |call| call.drop(1) }
   end
 
+  def test_upgrade_clears_cached_homebrew_state_after_dependency_preflight_and_install
+    clear_count = 0
+    runner = FakeRunner.new
+    candidate = direct_candidate(name: "usage", latest: "5.0.0")
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: ->(_candidate, _formula_path) { [] },
+      installed_versions: ->(_candidate) { ["5.0.0"] },
+      cache_clearer: -> { clear_count += 1 },
+    )
+
+    upgrader.upgrade!(candidate)
+
+    assert_operator clear_count, :>=, 1
+  end
+
   def test_upgrade_all_blocks_a_formula_when_no_safe_dependency_target_exists
     runner = FakeRunner.new
     upgrader = Safe::HomebrewCoreFormulaUpgrader.new(

@@ -23,12 +23,13 @@ module Safe
 
     class UpgradeVerificationError < RuntimeError; end
 
-    def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil)
+    def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil, cache_clearer: nil)
       @runner = runner
       @brew_file = brew_file
       @history = Safe::FormulaHistory.new
       @dependency_checker = dependency_checker || method(:default_unsatisfied_dependencies)
       @installed_versions = installed_versions || method(:default_installed_versions)
+      @cache_clearer = cache_clearer
     end
 
     def upgrade_all(candidates)
@@ -98,7 +99,10 @@ module Safe
         install_latest!(candidate, operation:)
       end
 
+      clear_homebrew_caches
       verify_target_installed!(candidate)
+    ensure
+      clear_homebrew_caches
     end
 
     def install_intermediate!(candidate, operation:)
@@ -190,6 +194,17 @@ module Safe
 
     def default_installed_versions(candidate)
       candidate.item.installed_kegs.map { |keg| keg.version.to_s }
+    end
+
+    def clear_homebrew_caches
+      return @cache_clearer.call if @cache_clearer
+
+      %w[Formula Formulary Dependency Tab Keg].each do |constant_name|
+        next unless Object.const_defined?(constant_name)
+
+        constant = Object.const_get(constant_name)
+        constant.clear_cache if constant.respond_to?(:clear_cache)
+      end
     end
 
     def candidate_names(candidates)
