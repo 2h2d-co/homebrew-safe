@@ -1,20 +1,91 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "set"
 
 require_relative "formula_history"
 
 module Safe
   class HomebrewCoreFormulaUpgrader
-    def initialize(runner:, brew_file:)
+    Failure = Struct.new(:candidate, :error, keyword_init: true)
+    Result = Struct.new(:upgraded, :failures, keyword_init: true)
+
+    class UnsatisfiedDependenciesError < RuntimeError
+      attr_reader :dependencies
+
+      def initialize(candidate, dependencies)
+        @dependencies = dependencies
+        target_version = candidate.target_version || candidate.latest_version
+        super "cannot safely upgrade #{candidate.item.full_name} to #{target_version}: " \
+              "required dependencies are not satisfied: #{dependencies.join(", ")}"
+      end
+    end
+
+    class UpgradeVerificationError < RuntimeError; end
+
+    def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil)
       @runner = runner
       @brew_file = brew_file
       @history = Safe::FormulaHistory.new
+      @dependency_checker = dependency_checker || method(:default_unsatisfied_dependencies)
+      @installed_versions = installed_versions || method(:default_installed_versions)
+    end
+
+    def upgrade_all(candidates)
+      pending = candidates.dup
+      upgraded = []
+      failures = []
+
+      until pending.empty?
+        pending_names = candidate_names(pending)
+        deferred = []
+        made_progress = false
+
+        pending.each do |candidate|
+          begin
+            upgrade!(candidate)
+            upgraded << candidate
+            made_progress = true
+          rescue UnsatisfiedDependenciesError => e
+            failure = Failure.new(candidate: candidate, error: e)
+            if e.dependencies.all? { |dependency| pending_names.include?(dependency) }
+              deferred << failure
+            else
+              failures << failure
+              made_progress = true
+            end
+          rescue StandardError => e
+            failures << Failure.new(candidate: candidate, error: e)
+            made_progress = true
+          end
+        end
+
+        break if deferred.empty?
+
+        unless made_progress
+          failures.concat(deferred)
+          break
+        end
+
+        pending = deferred.map(&:candidate)
+      end
+
+      Result.new(upgraded: upgraded, failures: failures)
     end
 
     def upgrade!(candidate)
-      return upgrade_latest!(candidate) unless intermediate_candidate?(candidate)
+      if intermediate_candidate?(candidate)
+        upgrade_intermediate!(candidate)
+      else
+        upgrade_latest!(candidate)
+      end
 
+      verify_target_installed!(candidate)
+    end
+
+    private
+
+    def upgrade_intermediate!(candidate)
       tap_path = local_homebrew_core_tap_path
       tap_was_installed = File.directory?(tap_path)
       formula_path = File.join(tap_path, candidate.upgrade_source_path)
@@ -35,6 +106,7 @@ module Safe
       prepare_local_homebrew_core_formula_path(formula_path)
       File.write(formula_path, historical_content)
 
+      ensure_dependencies_satisfied!(candidate, formula_path)
       @runner.safe_system(
         brew_env,
         @brew_file,
@@ -47,8 +119,6 @@ module Safe
       cleanup_local_homebrew_core_formula_path(formula_path, tap_was_installed) if defined?(formula_path) && defined?(tap_was_installed)
     end
 
-    private
-
     def intermediate_candidate?(candidate)
       candidate.type == :formula &&
         candidate.target_version &&
@@ -59,6 +129,7 @@ module Safe
     end
 
     def upgrade_latest!(candidate)
+      ensure_dependencies_satisfied!(candidate, nil)
       @runner.safe_system(
         brew_env,
         @brew_file,
@@ -66,6 +137,50 @@ module Safe
         "--formula",
         candidate.item.full_name,
       )
+    end
+
+    def ensure_dependencies_satisfied!(candidate, formula_path)
+      dependencies = @dependency_checker.call(candidate, formula_path).map(&:to_s).uniq
+      return if dependencies.empty?
+
+      raise UnsatisfiedDependenciesError.new(candidate, dependencies)
+    end
+
+    def default_unsatisfied_dependencies(candidate, formula_path)
+      require "formula_installer"
+      require "formulary"
+
+      formula = if formula_path
+        Formulary.factory(formula_path)
+      else
+        candidate.item.latest_formula
+      end
+
+      installer = FormulaInstaller.new(formula)
+      installer.fetch_bottle_tab(quiet: true)
+      installer.determine_bottle_tab_attributes
+      installer.compute_dependencies.map { |dependency| dependency.to_formula.full_name }
+    end
+
+    def verify_target_installed!(candidate)
+      target_version = (candidate.target_version || candidate.latest_version).to_s
+      installed_versions = @installed_versions.call(candidate).map(&:to_s)
+      return if installed_versions.include?(target_version)
+
+      installed = installed_versions.empty? ? "none" : installed_versions.join(", ")
+      raise UpgradeVerificationError,
+            "#{candidate.item.full_name}: expected #{target_version} after upgrade, but installed version is #{installed}"
+    end
+
+    def default_installed_versions(candidate)
+      candidate.item.installed_kegs.map { |keg| keg.version.to_s }
+    end
+
+    def candidate_names(candidates)
+      candidates.each_with_object(Set.new) do |candidate, names|
+        names << candidate.item.full_name.to_s
+        names << candidate.item.name.to_s if candidate.item.respond_to?(:name)
+      end
     end
 
     def local_homebrew_core_tap_path

@@ -6,6 +6,8 @@ require "securerandom"
 
 module Safe
   class CaskUpgrader
+    class UpgradeVerificationError < RuntimeError; end
+
     TEMP_TAP_USER = "2h2d-co"
     TEMP_TAP_PREFIX = "homebrew-safe-temp-"
     LOCK_FILENAME = ".brew-safe-temp-tap.lock"
@@ -53,10 +55,11 @@ module Safe
     end
     private_class_method :lock_available?
 
-    def initialize(runner:, brew_file:, tap_directory: nil)
+    def initialize(runner:, brew_file:, tap_directory: nil, installed_versions: nil)
       @runner = runner
       @brew_file = brew_file
       @tap_directory = Pathname(tap_directory || HOMEBREW_TAP_DIRECTORY)
+      @installed_versions = installed_versions || method(:default_installed_versions)
     end
 
     def upgrade!(candidate)
@@ -91,12 +94,27 @@ module Safe
       cask_path.write(candidate.upgrade_source_content)
 
       @runner.safe_system brew_env, @brew_file, "upgrade", "--cask", cask_path.to_s
+      verify_target_installed!(candidate)
     ensure
       tap_lock&.close
       FileUtils.rm_rf(tap_path) if tap_path
     end
 
     private
+
+    def verify_target_installed!(candidate)
+      target_version = (candidate.target_version || candidate.latest_version).to_s
+      installed_versions = @installed_versions.call(candidate).compact.map(&:to_s)
+      return if installed_versions.include?(target_version)
+
+      installed = installed_versions.empty? ? "none" : installed_versions.join(", ")
+      raise UpgradeVerificationError,
+            "#{candidate.item.full_name}: expected #{target_version} after upgrade, but installed version is #{installed}"
+    end
+
+    def default_installed_versions(candidate)
+      [candidate.item.installed_version]
+    end
 
     def brew_env
       {

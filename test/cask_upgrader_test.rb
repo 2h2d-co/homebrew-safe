@@ -6,7 +6,14 @@ require "pathname"
 require "safe/cask_upgrader"
 
 class CaskUpgraderTest < Minitest::Test
-  Candidate = Struct.new(:item, :upgrade_source_path, :upgrade_source_content, keyword_init: true)
+  Candidate = Struct.new(
+    :item,
+    :target_version,
+    :latest_version,
+    :upgrade_source_path,
+    :upgrade_source_content,
+    keyword_init: true,
+  )
   Item = Struct.new(:full_name)
 
   class FakeRunner
@@ -32,6 +39,8 @@ class CaskUpgraderTest < Minitest::Test
       runner = FakeRunner.new
       candidate = Candidate.new(
         item: Item.new("ngrok"),
+        target_version: "3.39.10",
+        latest_version: "3.39.11",
         upgrade_source_path: "Casks/n/ngrok.rb",
         upgrade_source_content: "cask \"ngrok\" do\nend\n",
       )
@@ -40,6 +49,7 @@ class CaskUpgraderTest < Minitest::Test
         runner: runner,
         brew_file: "/opt/homebrew/bin/brew",
         tap_directory: Pathname(dir),
+        installed_versions: ->(_candidate) { ["3.39.10"] },
       ).upgrade!(candidate)
 
       assert_equal "cask \"ngrok\" do\nend\n", runner.observed_cask_content
@@ -52,6 +62,30 @@ class CaskUpgraderTest < Minitest::Test
       assert_equal "1", env.fetch("HOMEBREW_NO_ASK")
       assert_equal "1", env.fetch("HOMEBREW_NO_REQUIRE_TAP_TRUST")
       assert_match %r{/2h2d-co/homebrew-safe-temp-[^/]+/Casks/n/ngrok\.rb\z}, cask_path
+      assert_empty Dir.glob(File.join(dir, "2h2d-co", "homebrew-safe-temp-*"))
+    end
+  end
+
+  def test_upgrade_fails_when_the_target_version_was_not_installed
+    Dir.mktmpdir do |dir|
+      candidate = Candidate.new(
+        item: Item.new("ngrok"),
+        target_version: "3.39.10",
+        latest_version: "3.39.11",
+        upgrade_source_path: "Casks/n/ngrok.rb",
+        upgrade_source_content: "cask \"ngrok\" do\nend\n",
+      )
+
+      error = assert_raises(Safe::CaskUpgrader::UpgradeVerificationError) do
+        Safe::CaskUpgrader.new(
+          runner: FakeRunner.new,
+          brew_file: "/opt/homebrew/bin/brew",
+          tap_directory: Pathname(dir),
+          installed_versions: ->(_candidate) { ["3.39.9"] },
+        ).upgrade!(candidate)
+      end
+
+      assert_match "expected 3.39.10", error.message
       assert_empty Dir.glob(File.join(dir, "2h2d-co", "homebrew-safe-temp-*"))
     end
   end

@@ -80,57 +80,40 @@ module Homebrew
         end
 
         safe_formulae = safe.select { |c| c.type == :formula }
-        direct_formulae = safe_formulae.reject { |c| intermediate_target?(c) }
-        historical_formulae = safe_formulae.select { |c| intermediate_target?(c) }
         safe_casks = safe.select { |c| c.type == :cask }
 
-        # Run formula and cask upgrades independently so a failure in one
-        # doesn't prevent the other from running
         upgraded = 0
-        formula_error = nil
-        if direct_formulae.any? || historical_formulae.any?
-          begin
-            if direct_formulae.any?
-              safe_system brew_env, HOMEBREW_BREW_FILE, "upgrade", "--formula", *direct_formulae.map { |c| c.item.full_name }
-              upgraded += direct_formulae.size
-            end
+        failures = []
 
-            if historical_formulae.any?
-              upgrader = Safe::HomebrewCoreFormulaUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
-              historical_formulae.each do |candidate|
-                upgrader.upgrade!(candidate)
-                upgraded += 1
-              end
-            end
-          rescue ErrorDuringExecution => e
-            formula_error = e
-          end
+        if safe_formulae.any?
+          formula_upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+            runner: self,
+            brew_file: HOMEBREW_BREW_FILE,
+          )
+          result = formula_upgrader.upgrade_all(safe_formulae)
+          upgraded += result.upgraded.size
+          failures.concat(result.failures.map { |failure| [failure.candidate, failure.error] })
         end
 
-        cask_error = nil
         if safe_casks.any?
-          begin
-            upgrader = Safe::CaskUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
-            safe_casks.each do |candidate|
-              upgrader.upgrade!(candidate)
+          cask_upgrader = Safe::CaskUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
+          safe_casks.each do |candidate|
+            begin
+              cask_upgrader.upgrade!(candidate)
               upgraded += 1
+            rescue StandardError => e
+              failures << [candidate, e]
             end
-          rescue ErrorDuringExecution => e
-            cask_error = e
           end
         end
 
         puts
         ohai "Summary"
-        puts "Upgraded: #{upgraded}#{" (some failures)" if formula_error || cask_error}"
+        puts "Upgraded: #{upgraded}"
+        print_failures(failures)
         print_skipped_summary(too_new, unknown, no_cutoff)
 
-        if formula_error && cask_error
-          onoe cask_error.message
-          raise formula_error
-        end
-        raise formula_error if formula_error
-        raise cask_error if cask_error
+        raise failures.first.last if failures.any?
       rescue Safe::Config::ConfigError => e
         odie e.message
       end
@@ -187,6 +170,17 @@ module Homebrew
         end
       end
 
+      def print_failures(failures)
+        return if failures.empty?
+
+        puts
+        ohai "Failed: #{failures.size}"
+        failures.each do |candidate, error|
+          message = error.message.to_s.gsub("\n", "\n    ")
+          puts "  #{candidate.item.full_name}: #{message}"
+        end
+      end
+
       def cutoff_annotation(candidate)
         effective_before = candidate.before_value
         default_before = @config&.global_before
@@ -208,14 +202,6 @@ module Homebrew
 
       def intermediate_target?(candidate)
         candidate.target_version && candidate.latest_version && candidate.target_version != candidate.latest_version
-      end
-
-      def brew_env
-        {
-          "HOMEBREW_NO_AUTO_UPDATE" => "1",
-          "HOMEBREW_NO_ASK" => "1",
-          "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
-        }
       end
     end
   end

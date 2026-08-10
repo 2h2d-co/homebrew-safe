@@ -16,17 +16,19 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     keyword_init: true,
   )
 
-  Item = Struct.new(:full_name)
+  Item = Struct.new(:full_name, :name, :latest_formula)
 
   class FakeRunner
     attr_reader :calls
 
-    def initialize
+    def initialize(&on_call)
       @calls = []
+      @on_call = on_call
     end
 
     def safe_system(*args)
       @calls << args
+      @on_call&.call(*args)
     end
   end
 
@@ -50,6 +52,8 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
           runner: runner,
           brew_file: "/opt/homebrew/bin/brew",
+          dependency_checker: ->(_candidate, _formula_path) { [] },
+          installed_versions: ->(candidate) { [candidate.target_version] },
         )
         upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
 
@@ -96,6 +100,8 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
           runner: runner,
           brew_file: "/opt/homebrew/bin/brew",
+          dependency_checker: ->(_candidate, _formula_path) { [] },
+          installed_versions: ->(candidate) { [candidate.target_version] },
         )
         upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula\n  desc \"historical\"\nend\n"))
 
@@ -126,7 +132,86 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
+  def test_upgrade_all_defers_a_formula_until_its_safe_dependency_is_installed
+    installed = []
+    runner = FakeRunner.new do |*args|
+      installed << args.last
+    end
+    dependency_checker = lambda do |candidate, _formula_path|
+      if candidate.item.full_name == "mise" && !installed.include?("usage")
+        ["usage"]
+      else
+        []
+      end
+    end
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: dependency_checker,
+      installed_versions: lambda { |candidate|
+        installed.include?(candidate.item.full_name) ? [candidate.target_version] : []
+      },
+    )
+    mise = direct_candidate(name: "mise", latest: "2026.8.2")
+    usage = direct_candidate(name: "usage", latest: "5.0.0")
+
+    result = upgrader.upgrade_all([mise, usage])
+
+    assert_equal %w[usage mise], result.upgraded.map { |candidate| candidate.item.full_name }
+    assert_empty result.failures
+    assert_equal %w[usage mise], runner.calls.map(&:last)
+  end
+
+  def test_upgrade_all_blocks_a_formula_when_no_safe_dependency_target_exists
+    runner = FakeRunner.new
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: ->(_candidate, _formula_path) { ["usage"] },
+      installed_versions: ->(_candidate) { [] },
+    )
+    mise = direct_candidate(name: "mise", latest: "2026.8.3")
+
+    result = upgrader.upgrade_all([mise])
+
+    assert_empty result.upgraded
+    assert_equal 1, result.failures.size
+    assert_instance_of Safe::HomebrewCoreFormulaUpgrader::UnsatisfiedDependenciesError,
+                       result.failures.first.error
+    assert_empty runner.calls
+  end
+
+  def test_upgrade_all_reports_a_failure_when_the_target_version_was_not_installed
+    runner = FakeRunner.new
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: ->(_candidate, _formula_path) { [] },
+      installed_versions: ->(_candidate) { ["1.0.0"] },
+    )
+    candidate = direct_candidate(name: "usage", latest: "5.1.0")
+
+    result = upgrader.upgrade_all([candidate])
+
+    assert_empty result.upgraded
+    assert_equal 1, result.failures.size
+    assert_instance_of Safe::HomebrewCoreFormulaUpgrader::UpgradeVerificationError,
+                       result.failures.first.error
+    assert_equal 1, runner.calls.size
+  end
+
   private
+
+  def direct_candidate(name:, latest:)
+    Candidate.new(
+      type: :formula,
+      target_version: latest,
+      latest_version: latest,
+      upgrade_commit_sha: nil,
+      upgrade_source_path: nil,
+      item: Item.new(name, name, name),
+    )
+  end
 
   def with_homebrew_library(path)
     Object.send(:remove_const, :HOMEBREW_LIBRARY) if Object.const_defined?(:HOMEBREW_LIBRARY)

@@ -77,6 +77,11 @@ upgraded unless they also pass the safety gate.
 For Homebrew/core formulae, this can upgrade to the latest safe intermediate version
 when the newest version is still too new.
 
+Before upgrading a formula, `safe-upgrade` checks the target bottle's exact runtime
+dependency requirements. Safe dependency targets are installed first. The dependent
+formula is blocked if a required dependency has no safe target, preventing Homebrew
+from resolving that dependency to an unsafe newer version.
+
 ```sh
 # Upgrade safe packages
 brew safe-upgrade
@@ -164,6 +169,9 @@ Homebrew tap so Homebrew still verifies the cask checksum.
 ### Safety logic
 
 A package is "safe to upgrade" when its publication date is older than the configured cutoff. For Homebrew/core formulae, this may be the newest available version or the latest safe intermediate version.
+
+An upgrade is counted as successful only after the selected target version is
+confirmed as installed.
 
 Packages with unknown dates (custom taps, non-GHCR bottles, casks whose GitHub
 lookup fails) are skipped. Use `brew safe-outdated --verbose` or
