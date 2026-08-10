@@ -98,6 +98,36 @@ class FormulaHistoryTest < Minitest::Test
     assert_nil target
   end
 
+  def test_selects_a_safe_historical_version_for_an_uninstalled_formula
+    commits = [
+      { "sha" => "sha-47", "commit" => { "message" => "mise 2026.4.7" } },
+      { "sha" => "sha-46", "commit" => { "message" => "mise 2026.4.6" } },
+      { "sha" => "sha-45", "commit" => { "message" => "mise 2026.4.5" } },
+    ]
+    publication_dates = {
+      "2026.4.7" => "2026-04-10T12:05:04Z",
+      "2026.4.6" => "2026-04-08T12:05:04Z",
+      "2026.4.5" => "2026-04-06T12:05:04Z",
+    }
+    history = Safe::FormulaHistory.new(
+      fetch_commits_page: ->(**) { commits },
+      fetch_formula_content: ->(**) { bottle_file },
+      publication_lookup: ->(version:, **_) { publication_dates[version] },
+    )
+    cutoff = Safe::DateFilter.parse_cutoff("2d", now: Time.utc(2026, 4, 11, 19, 33, 16))
+    formula = FakeFormula.new("mise", FakeTap.new("homebrew/core"), "Formula/m/mise.rb")
+
+    target = history.latest_safe_intermediate(
+      formula: formula,
+      installed_versions: [],
+      latest_version: "2026.4.8",
+      cutoff: cutoff,
+    )
+
+    refute_nil target
+    assert_equal "2026.4.6", target.version
+  end
+
   def test_stops_paging_once_installed_version_is_reached
     page_one = [
       { "sha" => "sha-47", "commit" => { "message" => "mise 2026.4.7" } },

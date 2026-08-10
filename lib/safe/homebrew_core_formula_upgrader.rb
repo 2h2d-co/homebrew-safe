@@ -13,10 +13,10 @@ module Safe
     class UnsatisfiedDependenciesError < RuntimeError
       attr_reader :dependencies
 
-      def initialize(candidate, dependencies)
+      def initialize(candidate, dependencies, operation:)
         @dependencies = dependencies
         target_version = candidate.target_version || candidate.latest_version
-        super "cannot safely upgrade #{candidate.item.full_name} to #{target_version}: " \
+        super "cannot safely #{operation} #{candidate.item.full_name} at #{target_version}: " \
               "required dependencies are not satisfied: #{dependencies.join(", ")}"
       end
     end
@@ -32,6 +32,24 @@ module Safe
     end
 
     def upgrade_all(candidates)
+      run_all(candidates, action: :upgrade!)
+    end
+
+    def install_all(candidates)
+      run_all(candidates, action: :install!)
+    end
+
+    def upgrade!(candidate)
+      install_target!(candidate, operation: "upgrade")
+    end
+
+    def install!(candidate)
+      install_target!(candidate, operation: "install")
+    end
+
+    private
+
+    def run_all(candidates, action:)
       pending = candidates.dup
       upgraded = []
       failures = []
@@ -43,7 +61,7 @@ module Safe
 
         pending.each do |candidate|
           begin
-            upgrade!(candidate)
+            public_send(action, candidate)
             upgraded << candidate
             made_progress = true
           rescue UnsatisfiedDependenciesError => e
@@ -73,19 +91,17 @@ module Safe
       Result.new(upgraded: upgraded, failures: failures)
     end
 
-    def upgrade!(candidate)
+    def install_target!(candidate, operation:)
       if intermediate_candidate?(candidate)
-        upgrade_intermediate!(candidate)
+        install_intermediate!(candidate, operation:)
       else
-        upgrade_latest!(candidate)
+        install_latest!(candidate, operation:)
       end
 
       verify_target_installed!(candidate)
     end
 
-    private
-
-    def upgrade_intermediate!(candidate)
+    def install_intermediate!(candidate, operation:)
       tap_path = local_homebrew_core_tap_path
       tap_was_installed = File.directory?(tap_path)
       formula_path = File.join(tap_path, candidate.upgrade_source_path)
@@ -106,7 +122,7 @@ module Safe
       prepare_local_homebrew_core_formula_path(formula_path)
       File.write(formula_path, historical_content)
 
-      ensure_dependencies_satisfied!(candidate, formula_path)
+      ensure_dependencies_satisfied!(candidate, formula_path, operation:)
       @runner.safe_system(
         brew_env,
         @brew_file,
@@ -128,22 +144,22 @@ module Safe
         candidate.upgrade_source_path
     end
 
-    def upgrade_latest!(candidate)
-      ensure_dependencies_satisfied!(candidate, nil)
+    def install_latest!(candidate, operation:)
+      ensure_dependencies_satisfied!(candidate, nil, operation:)
       @runner.safe_system(
         brew_env,
         @brew_file,
-        "upgrade",
+        operation,
         "--formula",
         candidate.item.full_name,
       )
     end
 
-    def ensure_dependencies_satisfied!(candidate, formula_path)
+    def ensure_dependencies_satisfied!(candidate, formula_path, operation:)
       dependencies = @dependency_checker.call(candidate, formula_path).map(&:to_s).uniq
       return if dependencies.empty?
 
-      raise UnsatisfiedDependenciesError.new(candidate, dependencies)
+      raise UnsatisfiedDependenciesError.new(candidate, dependencies, operation:)
     end
 
     def default_unsatisfied_dependencies(candidate, formula_path)

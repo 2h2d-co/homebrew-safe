@@ -10,6 +10,7 @@ Recommended Homebrew formula install:
 brew install 2h2d-co/tap/brew-safe
 brew safe-outdated --help
 brew safe-upgrade --help
+brew safe-install --help
 ```
 
 If you previously installed the legacy tap command, untap it so Homebrew uses the formula-provided wrappers:
@@ -28,6 +29,24 @@ brew trust 2h2d-co/safe
 Homebrew requires non-official tap commands to be trusted before loading them from the legacy tap.
 
 ## Commands
+
+### `brew safe-install`
+
+Install uninstalled Homebrew/core formulae at the newest versions that pass the
+release date safety gate. If the current formula is too new, `safe-install`
+selects a historical formula and bottle.
+
+```sh
+# Preview the selected safe versions
+brew safe-install --dry-run --before=2026-08-01 mise usage
+
+# Install the selected versions
+brew safe-install --before=2026-08-01 mise usage
+```
+
+All named formulae must be uninstalled. Name required dependencies explicitly;
+the install is blocked rather than allowing Homebrew to resolve an unnamed
+dependency to an ungated version.
 
 ### `brew safe-outdated`
 
@@ -191,6 +210,7 @@ Useful local command helpers:
 ```sh
 mise run safe-outdated -- --verbose mise  # run safe-outdated from this working tree
 mise run safe-upgrade -- --verbose mise   # run safe-upgrade --dry-run from this working tree
+mise run safe-install -- --before=2026-08-01 mise  # run safe-install --dry-run
 mise run tap:remote                       # tap from the GitHub remote
 ```
 

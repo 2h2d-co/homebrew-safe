@@ -1,0 +1,14 @@
+#!/usr/bin/env zsh
+#MISE description="Run safe-install --dry-run from this working tree"
+set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+HOMEBREW_AUTO_UPDATE_CHECKED=1 \
+HOMEBREW_NO_AUTO_UPDATE=1 \
+brew ruby -- -e '
+  $LOAD_PATH.unshift(File.expand_path("lib"))
+  require_relative "cmd/safe-install"
+  Homebrew::Cmd::SafeInstall.new(["--dry-run", *ARGV]).run
+' -- "$@"

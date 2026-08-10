@@ -162,6 +162,39 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     assert_equal %w[usage mise], runner.calls.map(&:last)
   end
 
+  def test_install_all_uses_install_and_defers_a_formula_until_its_safe_dependency_is_installed
+    installed = []
+    runner = FakeRunner.new do |*args|
+      installed << args.last
+    end
+    dependency_checker = lambda do |candidate, _formula_path|
+      if candidate.item.full_name == "mise" && !installed.include?("usage")
+        ["usage"]
+      else
+        []
+      end
+    end
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: dependency_checker,
+      installed_versions: lambda { |candidate|
+        installed.include?(candidate.item.full_name) ? [candidate.target_version] : []
+      },
+    )
+    mise = direct_candidate(name: "mise", latest: "2026.7.18")
+    usage = direct_candidate(name: "usage", latest: "4.1.0")
+
+    result = upgrader.install_all([mise, usage])
+
+    assert_equal %w[usage mise], result.upgraded.map { |candidate| candidate.item.full_name }
+    assert_empty result.failures
+    assert_equal [
+      ["/opt/homebrew/bin/brew", "install", "--formula", "usage"],
+      ["/opt/homebrew/bin/brew", "install", "--formula", "mise"],
+    ], runner.calls.map { |call| call.drop(1) }
+  end
+
   def test_upgrade_all_blocks_a_formula_when_no_safe_dependency_target_exists
     runner = FakeRunner.new
     upgrader = Safe::HomebrewCoreFormulaUpgrader.new(

@@ -43,16 +43,22 @@ module Safe
       candidates
     end
 
+    def resolve_formula_install(formulae)
+      resolve_formulae(formulae, mode: :install)
+    end
+
     private
 
-    def resolve_formulae(formulae = nil)
+    def resolve_formulae(formulae = nil, mode: :upgrade)
       formulae ||= if @args.named.present? && @args.formula?
         @args.named.to_resolved_formulae
       else
         Formula.installed
       end
 
-      formulae.select { |f| f.outdated? }.reject { |f| f.pinned? }.filter_map do |f|
+      formulae = formulae.select { |f| f.outdated? }.reject { |f| f.pinned? } if mode == :upgrade
+
+      formulae.filter_map do |f|
         if f.head? && !f.stable
           Homebrew.opoo "#{f.full_name}: HEAD-only install, skipping"
           next
@@ -60,7 +66,7 @@ module Safe
 
         latest = f.latest_formula
         latest_version = latest.pkg_version.to_s
-        installed_version = Safe::VersionInfo.formula_installed_version(f)
+        installed_version = Safe::VersionInfo.formula_installed_version(f) if mode == :upgrade
 
         cli_before = @args.before
         before_value = @config.resolve_before(type: :formula, full_name: f.full_name, cli_before: cli_before)
