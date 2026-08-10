@@ -7,18 +7,17 @@ concurrency:
   group: homebrew-safe-release
   cancel-in-progress: false
 jobs:
-  release:
-    name: Publish archive
+  validate:
+    name: Validate release
     runs-on: macos-15
     permissions:
-      attestations: write # Required to attest release artifacts.
-      contents: write # Required to create the GitHub release.
-      id-token: write # Required for artifact attestation signing.
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
       - uses: jdx/mise-action@e6a8b3978addb5a52f2b4cd9d91eafa7f0ab959d # v4.2.0
         with:
           version: "2026.8.2"
@@ -31,16 +30,49 @@ jobs:
             echo "release tag $GITHUB_REF_NAME must be a lightweight tag" >&2
             exit 1
           fi
+          tag_commit=$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")
+          if [[ $tag_commit != "$GITHUB_SHA" ]]; then
+            echo "release tag $GITHUB_REF_NAME does not point to workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
       - name: Run shared checks
         run: hk check --all --check
       - name: Run tests
         run: ruby -Ilib:test -e 'Dir["test/**/*_test.rb"].sort.each { |file| require_relative file }'
+
+  release:
+    name: Build and publish archive
+    needs: validate
+    runs-on: macos-15
+    permissions:
+      attestations: write # Required to attest release artifacts.
+      contents: write # Required to create the GitHub release.
+      id-token: write # Required for artifact attestation signing.
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Validate release tag
+        shell: bash
+        run: |
+          if [[ $(git cat-file -t "refs/tags/$GITHUB_REF_NAME") != commit ]]; then
+            echo "release tag $GITHUB_REF_NAME must be a lightweight tag" >&2
+            exit 1
+          fi
+          tag_commit=$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")
+          if [[ $tag_commit != "$GITHUB_SHA" ]]; then
+            echo "release tag $GITHUB_REF_NAME does not point to workflow commit $GITHUB_SHA" >&2
+            exit 1
+          fi
       - name: Build release archive
         run: |
           version=${GITHUB_REF_NAME#v}
           archive="brew-safe_${version}.tar.gz"
-          tar -czf "$archive" cmd lib README.md LICENSE
+          git archive --format=tar "$GITHUB_SHA" cmd lib README.md LICENSE | gzip -n > "$archive"
           shasum -a 256 "$archive" > "$archive.sha256"
+          shasum -a 256 -c "$archive.sha256"
           echo "archive=$archive" >> "$GITHUB_ENV"
       - uses: actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 # v4.1.0
         with:
