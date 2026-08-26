@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "uri"
 require "utils/curl"
 
 module Safe
@@ -13,8 +14,6 @@ module Safe
       return nil unless bottle_spec
 
       root_url = bottle_spec.root_url
-      return nil unless root_url&.include?("ghcr.io")
-
       publication_date_for(
         name: formula.name,
         version: formula.pkg_version.to_s,
@@ -24,17 +23,13 @@ module Safe
     end
 
     def self.publication_date_for(name:, version:, rebuild: 0, root_url:)
-      return nil unless root_url&.include?("ghcr.io")
+      repository = ghcr_repository(root_url)
+      return nil unless repository
 
       slug = name.tr("@", "/").tr("+", "x")
       tag = rebuild.to_i.positive? ? "#{version}-#{rebuild}" : version
 
-      # Derive org/repo from root_url: https://ghcr.io/v2/homebrew/core → org=homebrew, repo=core
-      match = root_url.match(%r{ghcr\.io/v2/([\w-]+)/([\w-]+)})
-      return nil unless match
-
-      org = match[1]
-      repo = match[2]
+      org, repo = repository
 
       manifest_url = "#{GHCR_V2_URL}/#{org}/#{repo}/#{slug}/manifests/#{tag}"
 
@@ -54,5 +49,23 @@ module Safe
     rescue JSON::ParserError
       nil
     end
+
+    def self.ghcr_repository(root_url)
+      return nil unless root_url.is_a?(String)
+
+      uri = URI.parse(root_url)
+      return nil unless uri.scheme == "https"
+      return nil unless uri.host == "ghcr.io"
+      return nil unless uri.port == 443
+      return nil if uri.userinfo || uri.query || uri.fragment
+
+      match = uri.path.match(%r{\A/v2/([\w-]+)/([\w-]+)/?\z})
+      return nil unless match
+
+      [match[1], match[2]]
+    rescue URI::InvalidURIError
+      nil
+    end
+    private_class_method :ghcr_repository
   end
 end

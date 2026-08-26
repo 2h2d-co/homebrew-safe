@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Require repository-wide code ownership and place credentialed GitHub release creation behind the
   tag-restricted release environment.
 - Update GitHub-owned checkout and artifact-attestation actions to their current pinned releases.
+- Require an exact HTTPS `ghcr.io` bottle root before deriving GHCR repository paths.
 
 ## [0.2.1] - 2026-08-10
 
