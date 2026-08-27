@@ -1,6 +1,6 @@
 [tools]
-hk = { version = "1.54.1", postinstall = "hk install --mise" }
-betterleaks = "1.7.3"
+hk = { version = "1.56.0", postinstall = "hk install --mise" }
+betterleaks = "1.8.1"
 cocogitto = "7.0.0"
 actionlint = "1.7.12"
 zizmor = "1.29.0"
