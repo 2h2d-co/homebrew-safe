@@ -21,5 +21,7 @@ jobs:
           version: "2026.8.2"
           install_args: --locked
           cache: false
+      - name: Update Homebrew
+        run: brew update
       - name: Run project checks
         run: mise run check

@@ -35,10 +35,10 @@ jobs:
             echo "release tag $GITHUB_REF_NAME does not point to workflow commit $GITHUB_SHA" >&2
             exit 1
           fi
-      - name: Run shared checks
-        run: hk check --all --check
-      - name: Run tests
-        run: ruby -Ilib:test -e 'Dir["test/**/*_test.rb"].sort.each { |file| require_relative file }'
+      - name: Update Homebrew
+        run: brew update
+      - name: Run project checks
+        run: mise run check
 
   release:
     name: Build and publish archive
