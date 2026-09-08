@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "abstract_command"
+require "system_command"
 require "formula"
 require "cask/caskroom"
 
@@ -41,7 +42,7 @@ module Homebrew
       end
 
       def run
-        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE, command: "safe-upgrade")
+        Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-upgrade")
 
         config = Safe::Config.new
         @config = config
@@ -87,7 +88,7 @@ module Homebrew
 
         if safe_formulae.any?
           formula_upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
-            runner: self,
+            runner: SystemCommand,
             brew_file: HOMEBREW_BREW_FILE,
           )
           result = formula_upgrader.upgrade_all(safe_formulae)
@@ -96,7 +97,7 @@ module Homebrew
         end
 
         if safe_casks.any?
-          cask_upgrader = Safe::CaskUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
+          cask_upgrader = Safe::CaskUpgrader.new(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
           safe_casks.each do |candidate|
             begin
               cask_upgrader.upgrade!(candidate)

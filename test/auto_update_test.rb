@@ -11,8 +11,8 @@ class AutoUpdateTest < Minitest::Test
       @calls = []
     end
 
-    def safe_system(*args)
-      @calls << args
+    def safe_system(executable, *args, env:)
+      @calls << [env, executable, *args]
     end
   end
 

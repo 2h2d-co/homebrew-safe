@@ -21,11 +21,5 @@ jobs:
           version: "2026.8.2"
           install_args: --locked
           cache: false
-      - name: Run shared checks
-        run: hk check --all --check
-      - name: Run tests
-        run: ruby -Ilib:test -e 'Dir["test/**/*_test.rb"].sort.each { |file| require_relative file }'
-      - name: Load commands with Homebrew
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: "1"
-        run: brew ruby -- -Ilib -e 'Dir["cmd/*.rb"].sort.each { |file| require File.expand_path(file) }'
+      - name: Run project checks
+        run: mise run check

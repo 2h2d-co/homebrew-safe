@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "abstract_command"
+require "system_command"
 require "formula"
 require "json"
 require "cask/caskroom"
@@ -41,7 +42,7 @@ module Homebrew
       end
 
       def run
-        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE, command: "safe-outdated")
+        Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-outdated")
 
         config = Safe::Config.new
         before_value = args.before || config.global_before

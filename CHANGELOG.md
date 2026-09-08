@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Use Homebrew's current subprocess API for auto-update, formula installs and upgrades,
+  and cask upgrades instead of calling the removed command-instance `safe_system` helper.
+
 ### Security
 
 - Require repository-wide code ownership and place credentialed GitHub release creation behind the

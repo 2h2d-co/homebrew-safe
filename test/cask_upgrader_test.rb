@@ -23,8 +23,8 @@ class CaskUpgraderTest < Minitest::Test
       @calls = []
     end
 
-    def safe_system(*args)
-      @calls << args
+    def safe_system(executable, *args, env:)
+      @calls << [env, executable, *args]
       cask_path = Pathname(args.last)
       @observed_cask_content = cask_path.read
     end

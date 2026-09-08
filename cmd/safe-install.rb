@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require "abstract_command"
+require "system_command"
 require "formula"
 
 require_relative "../lib/safe/config"
@@ -26,7 +27,7 @@ module Homebrew
       end
 
       def run
-        Safe::AutoUpdate.run_if_needed!(runner: self, brew_file: HOMEBREW_BREW_FILE, command: "safe-install")
+        Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-install")
 
         config = Safe::Config.new
         validate_cutoff!(config)
@@ -56,7 +57,7 @@ module Homebrew
           return
         end
 
-        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(runner: self, brew_file: HOMEBREW_BREW_FILE)
+        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
         result = upgrader.install_all(safe)
 
         puts

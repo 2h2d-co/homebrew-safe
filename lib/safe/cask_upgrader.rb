@@ -93,7 +93,7 @@ module Safe
       FileUtils.mkdir_p(cask_path.dirname)
       cask_path.write(candidate.upgrade_source_content)
 
-      @runner.safe_system brew_env, @brew_file, "upgrade", "--cask", cask_path.to_s
+      @runner.safe_system @brew_file, "upgrade", "--cask", cask_path.to_s, env: brew_env
       verify_target_installed!(candidate)
     ensure
       tap_lock&.close

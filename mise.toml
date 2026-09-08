@@ -10,3 +10,15 @@ ruby = "4.0.6"
 lockfile = true
 locked = true
 minimum_release_age = "7d"
+
+[tasks.test]
+description = "Run Ruby unit tests"
+run = "ruby -Ilib:test -e 'Dir[\"test/**/*_test.rb\"].sort.each { |file| require_relative file }'"
+
+[tasks."test:homebrew"]
+description = "Check command subprocess integration without changing packages"
+run = "HOMEBREW_NO_AUTO_UPDATE=1 brew ruby -- test/homebrew_subprocess.rb"
+
+[tasks.check]
+description = "Run all non-writing project checks"
+run = ["hk check --all --check", "mise run test", "mise run test:homebrew"]

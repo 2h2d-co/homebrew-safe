@@ -26,8 +26,8 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
       @on_call = on_call
     end
 
-    def safe_system(*args)
-      @calls << args
+    def safe_system(executable, *args, env:)
+      @calls << [env, executable, *args]
       @on_call&.call(*args)
     end
   end

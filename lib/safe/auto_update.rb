@@ -17,7 +17,7 @@ module Safe
       return if env_present?("HOMEBREW_NO_AUTO_UPDATE")
       return if env_present?("HOMEBREW_AUTO_UPDATING")
 
-      run_update_if_needed(runner: runner, brew_file:)
+      runner.safe_system(brew_file, "update-if-needed", env: UPDATE_IF_NEEDED_ENV)
 
       # Match Homebrew's native auto-update flow by re-execing the command after
       # the update check. This guarantees the rest of the command runs in a fresh
@@ -42,21 +42,6 @@ module Safe
       [reexec_env, reexec_argv]
     end
     private_class_method :reexec_env_and_args
-
-    def run_update_if_needed(runner:, brew_file:)
-      if defined?(Homebrew) && Homebrew.respond_to?(:_system)
-        return if Homebrew._system(UPDATE_IF_NEEDED_ENV, brew_file, "update-if-needed")
-
-        if defined?(ErrorDuringExecution)
-          raise ErrorDuringExecution.new([UPDATE_IF_NEEDED_ENV, brew_file, "update-if-needed"], status: $CHILD_STATUS)
-        end
-
-        raise "Failed to run #{brew_file} update-if-needed"
-      end
-
-      runner.safe_system UPDATE_IF_NEEDED_ENV, brew_file, "update-if-needed"
-    end
-    private_class_method :run_update_if_needed
 
     def env_present?(key)
       value = ENV[key]

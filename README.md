@@ -202,7 +202,8 @@ lookup fails) are skipped. Use `brew safe-outdated --verbose` or
 Run the tests with:
 
 ```sh
-for t in test/*_test.rb; do ruby -Itest -Ilib "$t"; done
+mise run test
+mise run check  # includes harmless subprocess regression checks under Homebrew
 ```
 
 Useful local command helpers:
