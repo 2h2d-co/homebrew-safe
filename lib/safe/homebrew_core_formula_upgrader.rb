@@ -127,12 +127,12 @@ module Safe
       File.write(formula_path, historical_content)
 
       ensure_dependencies_satisfied!(candidate, formula_path, operation:)
-      @runner.safe_system(
+      @runner.run!(
         @brew_file,
-        "install",
-        "--formula",
-        formula_path,
+        args: ["install", "--formula", formula_path],
         env: brew_env,
+        print_stdout: true,
+        print_stderr: true,
       )
     ensure
       restore_formula_file(formula_path, current_content) if defined?(formula_path)
@@ -150,12 +150,12 @@ module Safe
 
     def install_latest!(candidate, operation:)
       ensure_dependencies_satisfied!(candidate, nil, operation:)
-      @runner.safe_system(
+      @runner.run!(
         @brew_file,
-        operation,
-        "--formula",
-        candidate.item.full_name,
+        args: [operation, "--formula", candidate.item.full_name],
         env: brew_env,
+        print_stdout: true,
+        print_stderr: true,
       )
     end
 

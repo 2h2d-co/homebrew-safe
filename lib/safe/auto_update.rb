@@ -17,7 +17,8 @@ module Safe
       return if env_present?("HOMEBREW_NO_AUTO_UPDATE")
       return if env_present?("HOMEBREW_AUTO_UPDATING")
 
-      runner.safe_system(brew_file, "update-if-needed", env: UPDATE_IF_NEEDED_ENV)
+      runner.run!(brew_file, args: ["update-if-needed"], env: UPDATE_IF_NEEDED_ENV,
+                  print_stdout: true, print_stderr: true)
 
       # Match Homebrew's native auto-update flow by re-execing the command after
       # the update check. This guarantees the rest of the command runs in a fresh

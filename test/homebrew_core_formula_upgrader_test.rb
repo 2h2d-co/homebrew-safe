@@ -26,7 +26,9 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
       @on_call = on_call
     end
 
-    def safe_system(executable, *args, env:)
+    def run!(executable, args:, env:, print_stdout:, print_stderr:)
+      raise "Command output must remain visible" unless print_stdout && print_stderr
+
       @calls << [env, executable, *args]
       @on_call&.call(*args)
     end

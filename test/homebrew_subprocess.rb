@@ -33,9 +33,9 @@ begin
   raise "Incorrect arguments" unless reexec_args.drop(1) == ["/usr/bin/true", "safe-outdated", "--formula"]
   raise "Lost verbosity" unless reexec_args.first["HOMEBREW_SAFE_COMMAND_VERBOSE"] == "1"
 
-  SystemCommand.safe_system(
-    RUBY_PATH, "-e",
-    'abort "Environment not passed" unless ENV["BREW_SAFE_TEST"] == "1"',
+  SystemCommand.run!(
+    RUBY_PATH,
+    args: ["-e", 'abort "Environment not passed" unless ENV["BREW_SAFE_TEST"] == "1"'],
     env: { "BREW_SAFE_TEST" => "1" },
   )
 ensure

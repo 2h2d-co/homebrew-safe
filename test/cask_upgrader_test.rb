@@ -23,7 +23,9 @@ class CaskUpgraderTest < Minitest::Test
       @calls = []
     end
 
-    def safe_system(executable, *args, env:)
+    def run!(executable, args:, env:, print_stdout:, print_stderr:)
+      raise "Command output must remain visible" unless print_stdout && print_stderr
+
       @calls << [env, executable, *args]
       cask_path = Pathname(args.last)
       @observed_cask_content = cask_path.read
