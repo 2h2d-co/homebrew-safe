@@ -170,6 +170,43 @@ class FormulaHistoryTest < Minitest::Test
     assert_equal %w[2026.4.7 2026.4.6 2026.4.5], looked_up_versions
   end
 
+  def test_safe_intermediates_yields_older_safe_versions_lazily_newest_first
+    commits = [
+      { "sha" => "sha-48", "commit" => { "message" => "mise 2026.4.8" } },
+      { "sha" => "sha-47", "commit" => { "message" => "mise 2026.4.7" } },
+      { "sha" => "sha-46", "commit" => { "message" => "mise 2026.4.6" } },
+      { "sha" => "sha-45", "commit" => { "message" => "mise 2026.4.5" } },
+      { "sha" => "sha-44", "commit" => { "message" => "mise 2026.4.4" } },
+    ]
+    looked_up_versions = []
+    history = Safe::FormulaHistory.new(
+      fetch_commits_page: ->(**) { commits },
+      fetch_formula_content: ->(**) { bottle_file },
+      publication_lookup: ->(version:, **_) do
+        looked_up_versions << version
+        {
+          "2026.4.7" => "2026-04-10T12:00:00Z",
+          "2026.4.6" => "2026-04-06T12:00:00Z",
+          "2026.4.5" => "2026-04-05T12:00:00Z",
+        }[version]
+      end,
+    )
+    cutoff = Safe::DateFilter.parse_cutoff("2d", now: Time.utc(2026, 4, 11, 19, 33, 16))
+    formula = FakeFormula.new("mise", FakeTap.new("homebrew/core"), "Formula/m/mise.rb")
+
+    targets = history.safe_intermediates(
+      formula: formula,
+      installed_versions: ["2026.4.4"],
+      latest_version: "2026.4.8",
+      cutoff: cutoff,
+    )
+
+    assert_equal "2026.4.6", targets.next.version
+    assert_equal %w[2026.4.7 2026.4.6], looked_up_versions
+    assert_equal "2026.4.5", targets.next.version
+    assert_raises(StopIteration) { targets.next }
+  end
+
   def test_unsupported_formula_returns_nil
     history = Safe::FormulaHistory.new(
       fetch_commits_page: ->(**) { flunk "should not fetch commits" },

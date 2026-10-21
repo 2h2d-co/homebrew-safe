@@ -4,6 +4,7 @@ require "fileutils"
 require "set"
 
 require_relative "formula_history"
+require_relative "formula_dependencies"
 
 module Safe
   class HomebrewCoreFormulaUpgrader
@@ -167,7 +168,6 @@ module Safe
     end
 
     def default_unsatisfied_dependencies(candidate, formula_path)
-      require "formula_installer"
       require "formulary"
 
       formula = if formula_path
@@ -176,10 +176,7 @@ module Safe
         candidate.item.latest_formula
       end
 
-      installer = FormulaInstaller.new(formula)
-      installer.fetch_bottle_tab(quiet: true)
-      installer.determine_bottle_tab_attributes
-      installer.compute_dependencies.map { |dependency| dependency.to_formula.full_name }
+      Safe::FormulaDependencies.unsatisfied(formula).map(&:name)
     end
 
     def verify_target_installed!(candidate)

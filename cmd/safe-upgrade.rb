@@ -65,18 +65,19 @@ module Homebrew
         candidates = resolver.resolve
 
         safe = candidates.select(&:safe)
-        too_new = candidates.reject { |c| c.safe || c.date_unknown || c.no_cutoff }
+        blocked = candidates.select(&:blocked_dependencies)
+        too_new = candidates.reject { |c| c.safe || c.blocked_dependencies || c.date_unknown || c.no_cutoff }
         unknown = candidates.select(&:date_unknown)
         no_cutoff = candidates.select { |c| c.no_cutoff }
 
         if args.dry_run?
-          print_dry_run(safe, too_new, unknown, no_cutoff)
+          print_dry_run(safe, blocked, too_new, unknown, no_cutoff)
           return
         end
 
         if safe.empty?
           ohai "Nothing safe to upgrade."
-          print_skipped_summary(too_new, unknown, no_cutoff)
+          print_skipped_summary(blocked, too_new, unknown, no_cutoff)
           return
         end
 
@@ -112,7 +113,7 @@ module Homebrew
         ohai "Summary"
         puts "Upgraded: #{upgraded}"
         print_failures(failures)
-        print_skipped_summary(too_new, unknown, no_cutoff)
+        print_skipped_summary(blocked, too_new, unknown, no_cutoff)
 
         raise failures.first.last if failures.any?
       rescue Safe::Config::ConfigError => e
@@ -121,7 +122,7 @@ module Homebrew
 
       private
 
-      def print_dry_run(safe, too_new, unknown, no_cutoff)
+      def print_dry_run(safe, blocked, too_new, unknown, no_cutoff)
         if safe.any?
           ohai "Would upgrade"
           safe.each do |c|
@@ -141,10 +142,18 @@ module Homebrew
           ohai "Nothing safe to upgrade."
         end
 
-        print_skipped_summary(too_new, unknown, no_cutoff)
+        print_skipped_summary(blocked, too_new, unknown, no_cutoff)
       end
 
-      def print_skipped_summary(too_new, unknown, no_cutoff)
+      def print_skipped_summary(blocked, too_new, unknown, no_cutoff)
+        if blocked.any?
+          puts
+          ohai "Skipped (blocked by dependencies): #{blocked.size}"
+          blocked.each do |c|
+            puts "  #{c.item.full_name} #{c.installed_version} -> #{target_version(c)} requires: #{c.blocked_dependencies.join("; ")}"
+          end
+        end
+
         if too_new.any?
           puts
           ohai "Skipped (too new): #{too_new.size}"

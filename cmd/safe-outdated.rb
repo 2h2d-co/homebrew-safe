@@ -65,14 +65,15 @@ module Homebrew
 
         pinned = pinned_formulae
         safe = candidates.select(&:safe)
-        too_new = candidates.reject { |c| c.safe || c.date_unknown || c.no_cutoff }
+        blocked = candidates.select(&:blocked_dependencies)
+        too_new = candidates.reject { |c| c.safe || c.blocked_dependencies || c.date_unknown || c.no_cutoff }
         unknown = candidates.select(&:date_unknown)
         no_cutoff = candidates.select { |c| c.no_cutoff }
 
         if args.json?
-          print_json(safe, too_new, unknown, no_cutoff, pinned)
+          print_json(safe, blocked, too_new, unknown, no_cutoff, pinned)
         elsif verbose_output?
-          print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
+          print_verbose(config, safe, blocked, too_new, unknown, no_cutoff, pinned)
         else
           print_default(safe)
         end
@@ -107,7 +108,7 @@ module Homebrew
         end
       end
 
-      def print_verbose(config, safe, too_new, unknown, no_cutoff, pinned)
+      def print_verbose(config, safe, blocked, too_new, unknown, no_cutoff, pinned)
         header = verbose_header(config)
 
         if safe.any?
@@ -129,8 +130,17 @@ module Homebrew
           end
         end
 
-        if too_new.any?
+        if blocked.any?
           puts if safe.any?
+          ohai "Blocked by dependencies"
+          blocked.each do |c|
+            puts "#{c.item.full_name} #{c.installed_version} -> #{target_version(c)} requires:"
+            c.blocked_dependencies.each { |dependency| puts "  #{dependency}" }
+          end
+        end
+
+        if too_new.any?
+          puts if safe.any? || blocked.any?
           ohai "Too new"
           too_new.each do |c|
             age = c.publication_date ? Safe::DateFilter.age_description(c.publication_date) : ""
@@ -140,7 +150,7 @@ module Homebrew
         end
 
         if unknown.any?
-          puts if safe.any? || too_new.any?
+          puts if safe.any? || blocked.any? || too_new.any?
           ohai "Date unknown (skipped)"
           unknown.each do |c|
             puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
@@ -148,7 +158,7 @@ module Homebrew
         end
 
         if no_cutoff.any?
-          puts if safe.any? || too_new.any? || unknown.any?
+          puts if safe.any? || blocked.any? || too_new.any? || unknown.any?
           ohai "No cutoff configured (skipped)"
           no_cutoff.each do |c|
             puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version}"
@@ -156,7 +166,7 @@ module Homebrew
         end
 
         if pinned.any?
-          puts if safe.any? || too_new.any? || unknown.any? || no_cutoff.any?
+          puts if safe.any? || blocked.any? || too_new.any? || unknown.any? || no_cutoff.any?
           ohai "Pinned (skipped)"
           pinned.each do |f|
             latest = f.latest_formula
@@ -166,9 +176,10 @@ module Homebrew
         end
       end
 
-      def print_json(safe, too_new, unknown, no_cutoff, pinned)
+      def print_json(safe, blocked, too_new, unknown, no_cutoff, pinned)
         data = {
           safe: safe.map { |c| candidate_to_hash(c) },
+          blocked_by_dependencies: blocked.map { |c| candidate_to_hash(c).merge(unmet_dependencies: c.blocked_dependencies) },
           too_new: too_new.map { |c| candidate_to_hash(c) },
           date_unknown: unknown.map { |c| candidate_to_hash(c) },
           no_cutoff: no_cutoff.map { |c| candidate_to_hash(c) },

@@ -63,7 +63,7 @@ brew safe-outdated
 # Override cutoff
 brew safe-outdated --before=7d
 
-# Verbose: shows safe, too-new, date-unknown, and pinned sections.
+# Verbose: shows safe, blocked-by-dependencies, too-new, date-unknown, and pinned sections.
 # Safe entries also show both the chosen safe target and the latest available version
 # when they differ.
 brew safe-outdated --verbose
@@ -96,10 +96,17 @@ upgraded unless they also pass the safety gate.
 For Homebrew/core formulae, this can upgrade to the latest safe intermediate version
 when the newest version is still too new.
 
-Before upgrading a formula, `safe-upgrade` checks the target bottle's exact runtime
-dependency requirements. Safe dependency targets are installed first. The dependent
-formula is blocked if a required dependency has no safe target, preventing Homebrew
-from resolving that dependency to an unsafe newer version.
+Both `safe-outdated` and `safe-upgrade` check each formula target bottle's exact
+runtime dependency requirements before listing it as safe. The installed version of
+each required dependency must satisfy the requirement, or the dependency must have a
+safe upgrade target that does. When neither holds, the formula falls back to an older
+safe Homebrew/core version whose requirements are met. If no such version exists, it
+is listed as blocked by dependencies with the unmet requirements, and `safe-upgrade`
+skips it. Neither command installs a dependency that is not already installed.
+
+During an upgrade, safe dependency targets are installed first. `safe-upgrade` checks
+the requirements again before each install, so Homebrew cannot resolve a dependency
+to an unsafe newer version.
 
 ```sh
 # Upgrade safe packages
@@ -191,6 +198,9 @@ A package is "safe to upgrade" when its publication date is older than the confi
 
 An upgrade is counted as successful only after the selected target version is
 confirmed as installed.
+
+A formula is also skipped when its runtime dependencies block it; see
+[`brew safe-upgrade`](#brew-safe-upgrade).
 
 Packages with unknown dates (custom taps, non-GHCR bottles, casks whose GitHub
 lookup fails) are skipped. Use `brew safe-outdated --verbose` or

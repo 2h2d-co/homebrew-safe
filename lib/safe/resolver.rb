@@ -7,23 +7,38 @@ require_relative "ghcr_client"
 require_relative "cask_history"
 require_relative "version_info"
 require_relative "formula_history"
+require_relative "dependency_plan"
+require_relative "formula_dependencies"
 
 module Safe
   class Resolver
     Candidate = Struct.new(
       :item, :type, :installed_version, :target_version, :latest_version,
       :target_publication_date, :publication_date, :before_value, :cutoff, :safe, :date_unknown, :no_cutoff,
-      :upgrade_commit_sha, :upgrade_source_path, :upgrade_source_content,
+      :upgrade_commit_sha, :upgrade_source_path, :upgrade_source_content, :blocked_dependencies,
       keyword_init: true,
     )
 
     def initialize(args:, config:)
       @args = args
       @config = config
+      @formula_history = Safe::FormulaHistory.new
+      @intermediate_targets = {}.compare_by_identity
     end
 
-    # Returns Array[Candidate]
+    # Returns Array[Candidate]. Formula upgrades whose dependencies no planned
+    # upgrade satisfies fall back to older safe targets or are marked blocked.
     def resolve
+      apply_dependency_plan(resolve_candidates)
+    end
+
+    def resolve_formula_install(formulae)
+      resolve_formulae(formulae, mode: :install)
+    end
+
+    private
+
+    def resolve_candidates
       candidates = []
 
       if @args.formula?
@@ -43,11 +58,32 @@ module Safe
       candidates
     end
 
-    def resolve_formula_install(formulae)
-      resolve_formulae(formulae, mode: :install)
+    def apply_dependency_plan(candidates)
+      return candidates unless candidates.any? { |candidate| candidate.type == :formula && candidate.safe }
+
+      Safe::DependencyPlan.new(
+        requirements_for: lambda { |candidate|
+          Safe::FormulaDependencies.unsatisfied(
+            Safe::FormulaDependencies.target_formula(candidate, history: @formula_history),
+          )
+        },
+        next_target: method(:next_intermediate_target),
+        version_satisfies: ->(target, minimum) { PkgVersion.parse(target) >= PkgVersion.parse(minimum) },
+      ).apply(candidates)
     end
 
-    private
+    # Walks safe intermediate versions newest first, continuing from the candidate's current target.
+    def next_intermediate_target(candidate)
+      targets = @intermediate_targets[candidate] ||= @formula_history.safe_intermediates(
+        formula: candidate.item,
+        installed_versions: installed_versions(candidate.installed_version),
+        latest_version: candidate.latest_version,
+        cutoff: candidate.cutoff,
+      )
+      targets.next
+    rescue StopIteration
+      nil
+    end
 
     def resolve_formulae(formulae = nil, mode: :upgrade)
       formulae ||= if @args.named.present? && @args.formula?
@@ -81,54 +117,34 @@ module Safe
         end
         no_cutoff = cutoff.nil? && !date_unknown
 
-        target_version = nil
-        target_publication_date = nil
-        upgrade_commit_sha = nil
-        upgrade_source_path = nil
-
-        is_safe = if date_unknown || cutoff.nil?
-          false
-        elsif Safe::DateFilter.safe?(publication_date, cutoff)
-          target_version = latest_version
-          target_publication_date = publication_date
-          true
-        else
-          history = Safe::FormulaHistory.new
-          historical_target = history.latest_safe_intermediate(
-            formula: f,
-            installed_versions: installed_versions(installed_version),
-            latest_version: latest_version,
-            cutoff: cutoff,
-          )
-
-          if historical_target
-            target_version = historical_target.version
-            target_publication_date = historical_target.publication_date
-            upgrade_commit_sha = historical_target.commit_sha
-            upgrade_source_path = historical_target.path
-            true
-          else
-            false
-          end
-        end
-
-        Candidate.new(
+        candidate = Candidate.new(
           item: f,
           type: :formula,
           installed_version: installed_version,
-          target_version: target_version,
           latest_version: latest_version,
-          target_publication_date: target_publication_date,
           publication_date: publication_date,
           before_value: before_value,
           cutoff: cutoff,
-          safe: is_safe,
+          safe: false,
           date_unknown: date_unknown,
           no_cutoff: no_cutoff,
-          upgrade_commit_sha: upgrade_commit_sha,
-          upgrade_source_path: upgrade_source_path,
-          upgrade_source_content: nil,
         )
+
+        if date_unknown || cutoff.nil?
+          # Not evaluable.
+        elsif Safe::DateFilter.safe?(publication_date, cutoff)
+          candidate.target_version = latest_version
+          candidate.target_publication_date = publication_date
+          candidate.safe = true
+        elsif (historical_target = next_intermediate_target(candidate))
+          candidate.target_version = historical_target.version
+          candidate.target_publication_date = historical_target.publication_date
+          candidate.upgrade_commit_sha = historical_target.commit_sha
+          candidate.upgrade_source_path = historical_target.path
+          candidate.safe = true
+        end
+
+        candidate
       end
     end
 

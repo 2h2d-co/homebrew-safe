@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Check formula runtime dependencies in `safe-outdated` and `safe-upgrade` before listing an
+  upgrade as safe. A formula whose target needs a dependency that is not installed, or one
+  newer than its installed version or safe target, falls back to an older safe version
+  whose dependencies are met. Otherwise it is reported as blocked by dependencies and
+  `safe-upgrade` does not attempt it.
+
 ## [0.2.2] - 2026-09-08
 
 ### Fixed

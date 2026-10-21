@@ -31,33 +31,38 @@ module Safe
     end
 
     def latest_safe_intermediate(formula:, installed_versions:, latest_version:, cutoff:)
-      return nil unless supported_formula?(formula)
+      safe_intermediates(formula:, installed_versions:, latest_version:, cutoff:).first
+    end
+
+    # Lazily yields safe versions between the installed and latest versions, newest first.
+    def safe_intermediates(formula:, installed_versions:, latest_version:, cutoff:)
+      return [].each unless supported_formula?(formula)
 
       path = formula.ruby_source_path.to_s
-      seen_versions = {}
       installed_versions = installed_versions.to_set
 
-      each_commit(path) do |commit|
-        ref = version_ref_from_commit(formula.name, path, commit, seen_versions)
-        next if ref.nil?
-        next if ref.version == latest_version
-        break :stop if installed_versions.include?(ref.version)
+      Enumerator.new do |yielder|
+        seen_versions = {}
+        each_commit(path) do |commit|
+          ref = version_ref_from_commit(formula.name, path, commit, seen_versions)
+          next if ref.nil?
+          next if ref.version == latest_version
+          break :stop if installed_versions.include?(ref.version)
 
-        publication_date = publication_date_for(formula.name, ref)
-        next unless publication_date
-        next unless Safe::DateFilter.safe?(publication_date, cutoff)
+          publication_date = publication_date_for(formula.name, ref)
+          next unless publication_date
+          next unless Safe::DateFilter.safe?(publication_date, cutoff)
 
-        return VersionRef.new(
-          version: ref.version,
-          commit_sha: ref.commit_sha,
-          path: ref.path,
-          rebuild: ref.rebuild,
-          root_url: ref.root_url,
-          publication_date: publication_date,
-        )
+          yielder << VersionRef.new(
+            version: ref.version,
+            commit_sha: ref.commit_sha,
+            path: ref.path,
+            rebuild: ref.rebuild,
+            root_url: ref.root_url,
+            publication_date: publication_date,
+          )
+        end
       end
-
-      nil
     end
 
     def formula_content_at(commit_sha:, path:)
