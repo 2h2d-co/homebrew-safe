@@ -41,19 +41,22 @@ module Homebrew
 
         candidates = Safe::Resolver.new(args: args, config: config).resolve_formula_install(formulae)
         safe = candidates.select(&:safe)
-        too_new = candidates.reject { |candidate| candidate.safe || candidate.date_unknown || candidate.no_cutoff }
+        blocked = candidates.select(&:blocked_dependencies)
+        too_new = candidates.reject do |candidate|
+          candidate.safe || candidate.blocked_dependencies || candidate.date_unknown || candidate.no_cutoff
+        end
         unknown = candidates.select(&:date_unknown)
         no_cutoff = candidates.select(&:no_cutoff)
 
         if args.dry_run?
           print_candidates("Would install", safe)
-          print_skipped(too_new, unknown, no_cutoff)
+          print_skipped(blocked, too_new, unknown, no_cutoff)
           return
         end
 
         if safe.empty?
           ohai "Nothing safe to install."
-          print_skipped(too_new, unknown, no_cutoff)
+          print_skipped(blocked, too_new, unknown, no_cutoff)
           return
         end
 
@@ -64,7 +67,7 @@ module Homebrew
         ohai "Summary"
         puts "Installed: #{result.upgraded.size}"
         print_failures(result.failures)
-        print_skipped(too_new, unknown, no_cutoff)
+        print_skipped(blocked, too_new, unknown, no_cutoff)
 
         raise result.failures.first.error if result.failures.any?
       rescue Safe::Config::ConfigError => e
@@ -108,10 +111,22 @@ module Homebrew
         end
       end
 
-      def print_skipped(too_new, unknown, no_cutoff)
+      def print_skipped(blocked, too_new, unknown, no_cutoff)
+        print_blocked(blocked)
         print_skipped_group("Skipped (too new)", too_new)
         print_skipped_group("Skipped (date unknown)", unknown)
         print_skipped_group("Skipped (no cutoff configured)", no_cutoff)
+      end
+
+      def print_blocked(blocked)
+        return if blocked.empty?
+
+        puts
+        ohai "Skipped (blocked by dependencies): #{blocked.size}"
+        blocked.each do |candidate|
+          puts "  #{candidate.item.full_name} -> #{candidate.target_version} requires: " \
+               "#{candidate.blocked_dependencies.join("; ")}"
+        end
       end
 
       def print_skipped_group(heading, candidates)

@@ -44,9 +44,13 @@ brew safe-install --dry-run --before=2026-08-01 mise usage
 brew safe-install --before=2026-08-01 mise usage
 ```
 
-All named formulae must be uninstalled. Name required dependencies explicitly;
-the install is blocked rather than allowing Homebrew to resolve an unnamed
-dependency to an ungated version.
+All named formulae must be uninstalled. Name required dependencies explicitly.
+Before installing anything, `safe-install` checks each selected bottle's runtime
+dependencies. A dependency that is not installed must be named in the same
+command with a safe target that meets the bottle's minimum version. Otherwise the
+formula falls back to an older safe version whose dependencies are met, or is
+skipped as blocked by dependencies with the unmet requirements listed. Homebrew
+never resolves an unnamed dependency to an ungated version.
 
 ### `brew safe-outdated`
 

@@ -32,8 +32,9 @@ module Safe
       apply_dependency_plan(resolve_candidates)
     end
 
+    # Named formulae satisfy each other's dependencies; other uninstalled dependencies block.
     def resolve_formula_install(formulae)
-      resolve_formulae(formulae, mode: :install)
+      apply_dependency_plan(resolve_formulae(formulae, mode: :install))
     end
 
     private

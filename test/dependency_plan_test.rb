@@ -52,6 +52,23 @@ class DependencyPlanTest < Minitest::Test
     assert curl.safe
   end
 
+  def test_installs_need_uninstalled_dependencies_named_in_the_same_install
+    usage = formula("usage", installed: nil, target: "2.1")
+    mise = formula("mise", installed: nil, target: "2026.10.1")
+    node = formula("node", installed: nil, target: "24.1")
+    requirements = {
+      ["mise", "2026.10.1"] => [requirement("usage", "2.0")],
+      ["node", "24.1"] => [requirement("simdjson", "4.0")],
+    }
+
+    plan(requirements:).apply([usage, mise, node])
+
+    assert usage.safe
+    assert mise.safe
+    refute node.safe
+    assert_equal ["simdjson >= 4.0 (not installed)"], node.blocked_dependencies
+  end
+
   def test_blocks_upgrade_when_planned_dependency_target_is_below_the_minimum
     openssl = formula("openssl@3", installed: "3.6.1", target: "3.6.2", latest: "3.6.3")
     curl = formula("curl", installed: "8.1", target: "8.2")
