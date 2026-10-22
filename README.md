@@ -133,7 +133,8 @@ brew safe-upgrade --cask --greedy
 brew safe-upgrade --cask --greedy-latest
 brew safe-upgrade --cask --greedy-auto-updates
 
-# Show detailed skipped/safe output
+# List planned upgrades with release dates and ages first,
+# and show Homebrew's verification and post-install steps
 brew safe-upgrade --verbose
 
 # Upgrade specific packages only if they are safe

@@ -254,6 +254,39 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
 
   private
 
+  def test_verbose_upgrader_passes_verbose_to_latest_and_historical_installs
+    Dir.mktmpdir do |dir|
+      with_homebrew_library(Pathname(dir)) do
+        runner = FakeRunner.new
+        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+          runner: runner,
+          brew_file: "/opt/homebrew/bin/brew",
+          dependency_checker: ->(_candidate, _formula_path) { [] },
+          installed_versions: ->(candidate) { [candidate.target_version] },
+          verbose: true,
+        )
+        upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
+        historical = Candidate.new(
+          type: :formula,
+          target_version: "2026.4.11",
+          latest_version: "2026.4.15",
+          upgrade_commit_sha: "abc123",
+          upgrade_source_path: "Formula/m/mise.rb",
+          item: Item.new("mise"),
+        )
+
+        upgrader.upgrade!(direct_candidate(name: "usage", latest: "5.0.0"))
+        upgrader.upgrade!(historical)
+
+        formula_path = Pathname(dir)/"Taps/homebrew/homebrew-core/Formula/m/mise.rb"
+        assert_equal [
+          ["upgrade", "--verbose", "--formula", "usage"],
+          ["install", "--verbose", "--formula", formula_path.to_s],
+        ], runner.calls.map { |call| call.drop(2) }
+      end
+    end
+  end
+
   def direct_candidate(name:, latest:)
     Candidate.new(
       type: :formula,

@@ -24,8 +24,10 @@ module Safe
 
     class UpgradeVerificationError < RuntimeError; end
 
-    def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil, cache_clearer: nil)
+    def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil, cache_clearer: nil,
+                   verbose: false)
       @runner = runner
+      @verbose = verbose
       @brew_file = brew_file
       @history = Safe::FormulaHistory.new
       @dependency_checker = dependency_checker || method(:default_unsatisfied_dependencies)
@@ -130,7 +132,7 @@ module Safe
       ensure_dependencies_satisfied!(candidate, formula_path, operation:)
       @runner.run!(
         @brew_file,
-        args: ["install", "--formula", formula_path],
+        args: brew_args("install", "--formula", formula_path),
         env: brew_env,
         print_stdout: true,
         print_stderr: true,
@@ -153,7 +155,7 @@ module Safe
       ensure_dependencies_satisfied!(candidate, nil, operation:)
       @runner.run!(
         @brew_file,
-        args: [operation, "--formula", candidate.item.full_name],
+        args: brew_args(operation, "--formula", candidate.item.full_name),
         env: brew_env,
         print_stdout: true,
         print_stderr: true,
@@ -246,6 +248,11 @@ module Safe
       else
         File.write(formula_path, current_content)
       end
+    end
+
+    # Passes `--verbose` so Homebrew prints its verification and post-install steps.
+    def brew_args(command, *args)
+      @verbose ? [command, "--verbose", *args] : [command, *args]
     end
 
     def brew_env

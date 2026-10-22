@@ -95,6 +95,17 @@ class AutoUpdateTest < Minitest::Test
     end
   end
 
+  def test_command_verbose_follows_flag_or_reexec_environment
+    with_env(Safe::AutoUpdate::COMMAND_VERBOSE_ENV => nil) do
+      assert Safe::AutoUpdate.command_verbose?(true)
+      refute Safe::AutoUpdate.command_verbose?(false)
+    end
+
+    with_env(Safe::AutoUpdate::COMMAND_VERBOSE_ENV => "1") do
+      assert Safe::AutoUpdate.command_verbose?(false)
+    end
+  end
+
   def test_run_if_needed_is_skipped_when_auto_updates_are_disabled
     runner = FakeRunner.new
     reexec_called = false

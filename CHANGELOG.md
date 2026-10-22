@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   gate works: where the cutoff comes from and its formats, where release dates come from,
   how runtime dependencies can block an upgrade, and which upgrades are skipped.
 - Mark the formula and cask arguments as optional in the usage line.
+- Make `brew safe-upgrade --verbose` work. It lists the planned upgrades with release dates and
+  ages before running them, shows release dates for upgrades skipped as too new, and passes
+  `--verbose` to the Homebrew commands it runs. Previously the flag had no effect, and it was
+  dropped when Homebrew auto-updated first.
 
 ## [0.2.4] - 2026-10-21
 

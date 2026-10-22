@@ -31,6 +31,11 @@ module Safe
       reexec.call(reexec_env, brew_file, command, *reexec_argv)
     end
 
+    # The auto-update re-exec passes `--verbose` through COMMAND_VERBOSE_ENV, not the arguments.
+    def command_verbose?(verbose_flag)
+      verbose_flag || ENV[COMMAND_VERBOSE_ENV] == "1"
+    end
+
     def reexec_env_and_args(argv)
       reexec_env = REEXEC_ENV.dup
       verbose_requested = false

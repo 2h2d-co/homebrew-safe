@@ -68,6 +68,31 @@ class CaskUpgraderTest < Minitest::Test
     end
   end
 
+  def test_verbose_upgrade_passes_verbose_to_homebrew
+    Dir.mktmpdir do |dir|
+      runner = FakeRunner.new
+      candidate = Candidate.new(
+        item: Item.new("ngrok"),
+        target_version: "3.39.10",
+        latest_version: "3.39.11",
+        upgrade_source_path: "Casks/n/ngrok.rb",
+        upgrade_source_content: "cask \"ngrok\" do\nend\n",
+      )
+
+      Safe::CaskUpgrader.new(
+        runner: runner,
+        brew_file: "/opt/homebrew/bin/brew",
+        tap_directory: Pathname(dir),
+        installed_versions: ->(_candidate) { ["3.39.10"] },
+        verbose: true,
+      ).upgrade!(candidate)
+
+      _env, _brew_file, *args = runner.calls.first
+      assert_equal ["upgrade", "--verbose", "--cask"], args.first(3)
+      assert_match %r{/Casks/n/ngrok\.rb\z}, args.last
+    end
+  end
+
   def test_upgrade_fails_when_the_target_version_was_not_installed
     Dir.mktmpdir do |dir|
       candidate = Candidate.new(

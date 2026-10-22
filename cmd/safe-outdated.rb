@@ -11,6 +11,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/candidate_details"
 require_relative "../lib/safe/help"
 require_relative "../lib/safe/version_info"
 
@@ -93,7 +94,7 @@ module Homebrew
 
         if args.json?
           print_json(safe, blocked, too_new, unknown, no_cutoff, pinned)
-        elsif verbose_output?
+        elsif Safe::AutoUpdate.command_verbose?(args.verbose?)
           print_verbose(config, safe, blocked, too_new, unknown, no_cutoff, pinned)
         else
           print_default(safe)
@@ -135,19 +136,7 @@ module Homebrew
         if safe.any?
           ohai header
           safe.each do |c|
-            cutoff = cutoff_annotation(c, config)
-            label = "#{c.item.full_name}#{cutoff}"
-            if intermediate_target?(c)
-              safe_date = safe_publication_date(c)
-              latest_date = c.publication_date
-              safe_age = safe_date ? Safe::DateFilter.age_description(safe_date) : ""
-              latest_age = latest_date ? Safe::DateFilter.age_description(latest_date) : ""
-              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}, #{safe_age}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first}, #{latest_age})"
-            else
-              date = safe_publication_date(c)
-              age = date ? Safe::DateFilter.age_description(date) : ""
-              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{date&.split("T")&.first}, #{age})"
-            end
+            puts Safe::CandidateDetails.upgrade(c, label: "#{c.item.full_name}#{cutoff_annotation(c, config)}")
           end
         end
 
@@ -163,11 +152,7 @@ module Homebrew
         if too_new.any?
           puts if safe.any? || blocked.any?
           ohai "Too new"
-          too_new.each do |c|
-            age = c.publication_date ? Safe::DateFilter.age_description(c.publication_date) : ""
-            date = c.publication_date ? c.publication_date.split("T").first : ""
-            puts "#{c.item.full_name} #{c.installed_version} -> #{c.latest_version} (released #{date}, #{age})"
-          end
+          too_new.each { |c| puts Safe::CandidateDetails.upgrade(c) }
         end
 
         if unknown.any?
@@ -247,14 +232,6 @@ module Homebrew
 
       def safe_publication_date(candidate)
         candidate.target_publication_date || candidate.publication_date
-      end
-
-      def intermediate_target?(candidate)
-        candidate.target_version && candidate.latest_version && candidate.target_version != candidate.latest_version
-      end
-
-      def verbose_output?
-        args.verbose? || ENV[Safe::AutoUpdate::COMMAND_VERBOSE_ENV] == "1"
       end
     end
   end

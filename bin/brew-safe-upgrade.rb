@@ -38,7 +38,12 @@
 #:        --cask, --casks              Only upgrade casks.
 #:    -n, --dry-run                    List the upgrades that would run and the ones
 #:                                     that would be skipped, without upgrading.
-#:    -v, --verbose                    Show detailed output.
+#:    -v, --verbose                    List the planned upgrades before running
+#:                                     them, with release dates and ages and the
+#:                                     newest version when an older one is used.
+#:                                     Also show release dates for skipped upgrades
+#:                                     and Homebrew's verification and post-install
+#:                                     steps.
 #:    -g, --greedy                     Also include outdated casks with
 #:                                     `auto_updates true` or `version :latest`.
 #:        --greedy-latest              Also include outdated casks with `version

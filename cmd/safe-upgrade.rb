@@ -10,6 +10,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/candidate_details"
 require_relative "../lib/safe/help"
 require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/homebrew_core_formula_upgrader"
@@ -49,7 +50,9 @@ module Homebrew
                description: "List the upgrades that would run and the ones that would be skipped, " \
                             "without upgrading."
         switch "-v", "--verbose",
-               description: "Show detailed output."
+               description: "List the planned upgrades before running them, with release dates and ages " \
+                            "and the newest version when an older one is used. Also show release dates " \
+                            "for skipped upgrades and Homebrew's verification and post-install steps."
         switch "-g", "--greedy",
                description: "Also include outdated casks with `auto_updates true` or `version :latest`."
         switch "--greedy-latest",
@@ -63,6 +66,7 @@ module Homebrew
       def run
         Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-upgrade")
 
+        @verbose = Safe::AutoUpdate.command_verbose?(args.verbose?)
         config = Safe::Config.new
         @config = config
         before_value = args.before || config.global_before
@@ -100,6 +104,11 @@ module Homebrew
           return
         end
 
+        if @verbose
+          print_planned("Upgrading", safe)
+          puts
+        end
+
         safe_formulae = safe.select { |c| c.type == :formula }
         safe_casks = safe.select { |c| c.type == :cask }
 
@@ -110,6 +119,7 @@ module Homebrew
           formula_upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
             runner: SystemCommand,
             brew_file: HOMEBREW_BREW_FILE,
+            verbose: @verbose,
           )
           result = formula_upgrader.upgrade_all(safe_formulae)
           upgraded += result.upgraded.size
@@ -117,7 +127,7 @@ module Homebrew
         end
 
         if safe_casks.any?
-          cask_upgrader = Safe::CaskUpgrader.new(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
+          cask_upgrader = Safe::CaskUpgrader.new(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, verbose: @verbose)
           safe_casks.each do |candidate|
             begin
               cask_upgrader.upgrade!(candidate)
@@ -143,25 +153,30 @@ module Homebrew
 
       def print_dry_run(safe, blocked, too_new, unknown, no_cutoff)
         if safe.any?
-          ohai "Would upgrade"
-          safe.each do |c|
-            cutoff = cutoff_annotation(c)
-            label = "#{c.item.full_name}#{cutoff}"
-            if intermediate_target?(c)
-              safe_date = safe_publication_date(c)
-              latest_date = c.publication_date
-              puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first})"
-            else
-              date = safe_publication_date(c)
-              date_info = date ? " (released #{date.split("T").first})" : ""
-              puts "#{label} #{c.installed_version} -> #{target_version(c)}#{date_info}"
-            end
-          end
+          print_planned("Would upgrade", safe)
         else
           ohai "Nothing safe to upgrade."
         end
 
         print_skipped_summary(blocked, too_new, unknown, no_cutoff)
+      end
+
+      def print_planned(heading, safe)
+        ohai heading
+        safe.each do |c|
+          label = "#{c.item.full_name}#{cutoff_annotation(c)}"
+          if @verbose
+            puts Safe::CandidateDetails.upgrade(c, label:)
+          elsif intermediate_target?(c)
+            safe_date = safe_publication_date(c)
+            latest_date = c.publication_date
+            puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first})"
+          else
+            date = safe_publication_date(c)
+            date_info = date ? " (released #{date.split("T").first})" : ""
+            puts "#{label} #{c.installed_version} -> #{target_version(c)}#{date_info}"
+          end
+        end
       end
 
       def print_skipped_summary(blocked, too_new, unknown, no_cutoff)
@@ -177,6 +192,8 @@ module Homebrew
           puts
           ohai "Skipped (too new): #{too_new.size}"
           too_new.each do |c|
+            next puts("  #{Safe::CandidateDetails.upgrade(c)}") if @verbose
+
             age = c.publication_date ? Safe::DateFilter.age_description(c.publication_date) : ""
             puts "  #{c.item.full_name} #{c.installed_version} -> #{c.latest_version} (#{age})"
           end

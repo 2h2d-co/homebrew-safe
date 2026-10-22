@@ -55,8 +55,9 @@ module Safe
     end
     private_class_method :lock_available?
 
-    def initialize(runner:, brew_file:, tap_directory: nil, installed_versions: nil)
+    def initialize(runner:, brew_file:, tap_directory: nil, installed_versions: nil, verbose: false)
       @runner = runner
+      @verbose = verbose
       @brew_file = brew_file
       @tap_directory = Pathname(tap_directory || HOMEBREW_TAP_DIRECTORY)
       @installed_versions = installed_versions || method(:default_installed_versions)
@@ -93,7 +94,7 @@ module Safe
       FileUtils.mkdir_p(cask_path.dirname)
       cask_path.write(candidate.upgrade_source_content)
 
-      @runner.run!(@brew_file, args: ["upgrade", "--cask", cask_path.to_s], env: brew_env,
+      @runner.run!(@brew_file, args: brew_args("upgrade", "--cask", cask_path.to_s), env: brew_env,
                    print_stdout: true, print_stderr: true)
       verify_target_installed!(candidate)
     ensure
@@ -115,6 +116,11 @@ module Safe
 
     def default_installed_versions(candidate)
       [candidate.item.installed_version]
+    end
+
+    # Passes `--verbose` so Homebrew prints its verification and post-install steps.
+    def brew_args(command, *args)
+      @verbose ? [command, "--verbose", *args] : [command, *args]
     end
 
     def brew_env
