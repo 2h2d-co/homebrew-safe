@@ -10,6 +10,7 @@ jobs:
   validate:
     name: Validate release
     runs-on: macos-15
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -44,6 +45,7 @@ jobs:
     name: Build and publish archive
     needs: validate
     runs-on: macos-15
+    timeout-minutes: 10
     environment: github-release
     permissions:
       attestations: write # Required to attest release artifacts.
@@ -68,6 +70,7 @@ jobs:
             exit 1
           fi
       - name: Build release archive
+        shell: bash
         run: |
           version=${GITHUB_REF_NAME#v}
           archive="brew-safe_${version}.tar.gz"
