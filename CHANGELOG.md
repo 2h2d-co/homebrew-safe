@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-10-22
+
 ### Fixed
 
 - Show the full help, with every option, for `brew safe-outdated`, `brew safe-upgrade`, and
