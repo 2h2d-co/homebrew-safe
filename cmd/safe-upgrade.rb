@@ -10,6 +10,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/help"
 require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/homebrew_core_formula_upgrader"
 
@@ -18,17 +19,35 @@ module Homebrew
     class SafeUpgrade < AbstractCommand
       cmd_args do
         description <<~EOS
-          Upgrade outdated formulae and casks that pass the release date safety gate.
-          Versions released too recently are skipped.
+          Upgrade installed formulae and casks to versions that pass the release-age
+          gate. With no arguments, check every installed package. Pinned formulae are
+          skipped.
+
+          #{Safe::Help::GATE}
+
+          #{Safe::Help::CUTOFF}
+
+          A formula upgrade also needs its runtime dependencies at the versions its
+          bottle requires. Passing dependency upgrades are installed first. A
+          dependency that is not installed, or has no passing upgrade to a required
+          version, makes the command use an older passing version or skip the formula.
+          Outdated dependents are not upgraded unless they pass the gate themselves.
+
+          After upgrading, the command lists the upgrades it skipped and why.
+
+          #{Safe::Help::DATES}
+
+          #{Safe::Help::AUTO_UPDATE}
         EOS
         flag   "--before=",
-               description: "Cutoff: only upgrade versions older than this (e.g. 7d, 30d, 2026-01-01)."
+               description: Safe::Help::BEFORE_OPTION
         switch "--formula", "--formulae",
                description: "Only upgrade formulae."
         switch "--cask", "--casks",
                description: "Only upgrade casks."
         switch "-n", "--dry-run",
-               description: "Show what would be upgraded without upgrading."
+               description: "List the upgrades that would run and the ones that would be skipped, " \
+                            "without upgrading."
         switch "-v", "--verbose",
                description: "Show detailed output."
         switch "-g", "--greedy",
@@ -38,7 +57,7 @@ module Homebrew
         switch "--greedy-auto-updates",
                description: "Also include outdated casks with `auto_updates true`."
         conflicts "--formula", "--cask"
-        named_args [:formula, :cask], min: 0
+        named_args [:formula, :cask]
       end
 
       def run

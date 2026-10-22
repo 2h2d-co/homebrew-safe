@@ -217,7 +217,15 @@ Run the tests with:
 
 ```sh
 mise run test
-mise run check  # includes harmless subprocess regression checks under Homebrew
+mise run check  # includes harmless subprocess and help checks under Homebrew
+```
+
+The formula installs the command wrappers in `bin/`. Homebrew builds their `--help`
+output from their `#:` comment lines, which carry each command's parser help.
+After changing a command's options or description, regenerate the wrappers:
+
+```sh
+mise run wrappers
 ```
 
 Useful local command helpers:

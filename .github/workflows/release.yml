@@ -71,7 +71,7 @@ jobs:
         run: |
           version=${GITHUB_REF_NAME#v}
           archive="brew-safe_${version}.tar.gz"
-          git archive --format=tar "$GITHUB_SHA" cmd lib README.md LICENSE | gzip -n > "$archive"
+          git archive --format=tar "$GITHUB_SHA" bin cmd lib README.md LICENSE | gzip -n > "$archive"
           shasum -a 256 "$archive" > "$archive.sha256"
           shasum -a 256 -c "$archive.sha256"
           echo "archive=$archive" >> "$GITHUB_ENV"

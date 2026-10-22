@@ -11,6 +11,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/help"
 require_relative "../lib/safe/version_info"
 
 module Homebrew
@@ -18,19 +19,39 @@ module Homebrew
     class SafeOutdated < AbstractCommand
       cmd_args do
         description <<~EOS
-          List outdated formulae and casks that are safe to upgrade based on
-          release date. Versions released too recently are filtered out.
+          List installed formulae and casks with an upgrade that passes the
+          release-age gate. With no arguments, check every installed package.
+
+          #{Safe::Help::GATE}
+
+          #{Safe::Help::CUTOFF}
+
+          A formula upgrade also needs its runtime dependencies at the versions its
+          bottle requires. Each dependency must be installed at such a version or have
+          a passing upgrade to one. Otherwise the command uses an older passing version
+          or reports the formula as blocked by dependencies.
+
+          By default, only passing upgrades are listed. Use `--verbose` or `--json` to
+          also see skipped upgrades: too new, date unknown, no cutoff configured,
+          blocked by dependencies, and pinned.
+
+          #{Safe::Help::DATES}
+
+          #{Safe::Help::AUTO_UPDATE}
         EOS
         flag   "--before=",
-               description: "Cutoff: only show versions older than this (e.g. 7d, 30d, 2026-01-01)."
+               description: Safe::Help::BEFORE_OPTION
         switch "--formula", "--formulae",
-               description: "Only list outdated formulae."
+               description: "Only check formulae."
         switch "--cask", "--casks",
-               description: "Only list outdated casks."
+               description: "Only check casks."
         switch "--json",
-               description: "Print output in JSON format."
+               description: "Print every passing and skipped upgrade as JSON, grouped by " \
+                            "`safe`, `blocked_by_dependencies`, `too_new`, `date_unknown`, " \
+                            "`no_cutoff`, and `pinned`."
         switch "-v", "--verbose",
-               description: "Show versions, release dates, age, and items that are too new or date-unknown."
+               description: "Show release dates and ages, the newest version when an older one " \
+                            "is used, and skipped upgrades grouped by reason."
         switch "-g", "--greedy",
                description: "Also include outdated casks with `auto_updates true` or `version :latest`."
         switch "--greedy-latest",
@@ -38,7 +59,7 @@ module Homebrew
         switch "--greedy-auto-updates",
                description: "Also include outdated casks with `auto_updates true`."
         conflicts "--formula", "--cask"
-        named_args [:formula, :cask], min: 0
+        named_args [:formula, :cask]
       end
 
       def run

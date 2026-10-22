@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Show the full help, with every option, for `brew safe-outdated`, `brew safe-upgrade`, and
+  `brew safe-install` when they are installed from the formula. Previously Homebrew showed
+  only a one-line description.
+- Explain in `brew safe-outdated --help` and `brew safe-upgrade --help` how the release-age
+  gate works: where the cutoff comes from and its formats, where release dates come from,
+  how runtime dependencies can block an upgrade, and which upgrades are skipped.
+- Mark the formula and cask arguments as optional in the usage line.
+
 ## [0.2.4] - 2026-10-21
 
 ### Fixed
