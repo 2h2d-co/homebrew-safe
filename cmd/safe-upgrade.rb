@@ -65,6 +65,7 @@ module Homebrew
 
       def run
         Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-upgrade")
+        Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
 
         @verbose = Safe::AutoUpdate.command_verbose?(args.verbose?)
         config = Safe::Config.new

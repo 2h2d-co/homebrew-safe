@@ -11,6 +11,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/candidate_details"
 require_relative "../lib/safe/help"
 require_relative "../lib/safe/version_info"
@@ -65,6 +66,7 @@ module Homebrew
 
       def run
         Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-outdated")
+        Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
 
         config = Safe::Config.new
         before_value = args.before || config.global_before

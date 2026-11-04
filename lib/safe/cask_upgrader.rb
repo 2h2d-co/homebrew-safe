@@ -18,17 +18,51 @@ module Safe
     TEMP_TAP_PREFIX = "homebrew-safe-temp-"
     LOCK_FILENAME = ".brew-safe-temp-tap.lock"
     GLOBAL_LOCK_FILENAME = ".brew-safe-temp-taps.lock"
+    # Homebrew names the tap at `Taps/<user>/homebrew-<repository>` as `<user>/<repository>`.
+    TEMP_TAP_NAME_PATTERN = %r{\A#{TEMP_TAP_USER}/#{TEMP_TAP_PREFIX.delete_prefix("homebrew-")}[^/]+\z}
 
-    def self.cleanup_stale_temp_taps!(tap_directory: nil)
+    BREW_ENV = {
+      "HOMEBREW_NO_AUTO_UPDATE" => "1",
+      "HOMEBREW_NO_ASK" => "1",
+      "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
+      "HOMEBREW_NO_ENV_HINTS" => "1",
+    }.freeze
+
+    # Removes the temporary taps and tap trust entries that an interrupted upgrade left behind.
+    # A trust entry is stale when its tap directory is gone; active upgrades hold their tap's lock.
+    def self.cleanup_stale_temp_taps!(runner:, brew_file:, tap_directory: nil, trusted_taps: method(:trusted_taps))
       with_global_lock(tap_directory) do |tap_root|
-        tap_root.children.each do |path|
-          next unless path.directory?
-          next unless path.basename.to_s.start_with?(TEMP_TAP_PREFIX)
+        remove_stale_temp_tap_directories(tap_root)
 
-          FileUtils.rm_rf(path) if stale_temp_tap?(path)
+        stale_names = trusted_taps.call.select do |name|
+          name.match?(TEMP_TAP_NAME_PATTERN) && !(tap_root/"homebrew-#{name.split("/").last}").directory?
+        end
+        next if stale_names.empty?
+
+        begin
+          runner.run!(brew_file, args: ["untrust", "--tap", *stale_names], env: BREW_ENV,
+                                 print_stdout: false, print_stderr: true)
+        rescue StandardError => e
+          warn "Could not untrust stale temporary taps #{stale_names.join(", ")}: #{e.message}"
         end
       end
     end
+
+    def self.trusted_taps
+      require "trust"
+      Homebrew::Trust.trusted_entries(:tap)
+    end
+    private_class_method :trusted_taps
+
+    def self.remove_stale_temp_tap_directories(tap_root)
+      tap_root.children.each do |path|
+        next unless path.directory?
+        next unless path.basename.to_s.start_with?(TEMP_TAP_PREFIX)
+
+        FileUtils.rm_rf(path) if stale_temp_tap?(path)
+      end
+    end
+    private_class_method :remove_stale_temp_tap_directories
 
     def self.with_global_lock(tap_directory)
       tap_root = Pathname(tap_directory || HOMEBREW_TAP_DIRECTORY)/TEMP_TAP_USER
@@ -84,12 +118,7 @@ module Safe
       tap_lock = nil
       tap_path = nil
       self.class.send(:with_global_lock, @tap_directory) do |tap_root|
-        tap_root.children.each do |path|
-          next unless path.directory?
-          next unless path.basename.to_s.start_with?(TEMP_TAP_PREFIX)
-
-          FileUtils.rm_rf(path) if self.class.send(:stale_temp_tap?, path)
-        end
+        self.class.send(:remove_stale_temp_tap_directories, tap_root)
 
         tap_path = tap_root/"#{TEMP_TAP_PREFIX}#{Process.pid}-#{SecureRandom.hex(8)}"
         FileUtils.mkdir_p(tap_path)
@@ -171,7 +200,6 @@ module Safe
       raise UnsupportedCaskSourceError, "#{candidate.item.full_name}: #{e.message}"
     end
 
-    # Homebrew names the tap at `Taps/<user>/homebrew-<repository>` as `<user>/<repository>`.
     def temp_tap_name(tap_path)
       "#{TEMP_TAP_USER}/#{tap_path.basename.to_s.delete_prefix("homebrew-")}"
     end
@@ -186,7 +214,7 @@ module Safe
     end
 
     def run_brew(*args, print_stdout:)
-      @runner.run!(@brew_file, args: args, env: brew_env, print_stdout: print_stdout, print_stderr: true)
+      @runner.run!(@brew_file, args: args, env: BREW_ENV, print_stdout: print_stdout, print_stderr: true)
     end
 
     def verify_target_installed!(candidate)
@@ -206,15 +234,6 @@ module Safe
     # Passes `--verbose` so Homebrew prints its verification and post-install steps.
     def verbose_args
       @verbose ? ["--verbose"] : []
-    end
-
-    def brew_env
-      {
-        "HOMEBREW_NO_AUTO_UPDATE" => "1",
-        "HOMEBREW_NO_ASK" => "1",
-        "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
-        "HOMEBREW_NO_ENV_HINTS" => "1",
-      }
     end
   end
 end

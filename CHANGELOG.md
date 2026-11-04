@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Trust the temporary cask tap with `brew trust` for the duration of the upgrade and untrust it
   afterwards, instead of setting the deprecated `HOMEBREW_NO_REQUIRE_TAP_TRUST`. This removes
   the deprecation warning from every cask upgrade.
+- Remove stale temporary tap trust entries in `brew safe-outdated`, `brew safe-upgrade`, and
+  `brew safe-install`. An interrupted cask upgrade could leave its temporary tap trusted after
+  the tap was gone.
 
 ## [0.2.5] - 2026-10-22
 

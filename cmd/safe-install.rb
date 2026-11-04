@@ -9,6 +9,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/homebrew_core_formula_upgrader"
 
 module Homebrew
@@ -28,6 +29,7 @@ module Homebrew
 
       def run
         Safe::AutoUpdate.run_if_needed!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE, command: "safe-install")
+        Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
 
         config = Safe::Config.new
         validate_cutoff!(config)

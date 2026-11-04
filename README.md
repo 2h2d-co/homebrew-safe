@@ -198,7 +198,9 @@ If the newest cask version is too new, `safe-outdated` and `safe-upgrade` can
 walk recent cask history and select the latest safe intermediate version. Cask
 upgrades are installed from the verified historical cask file through a temporary
 Homebrew tap so Homebrew still verifies the cask checksum. The command trusts that
-tap with `brew trust` for the upgrade and untrusts it afterwards. Homebrew allows
+tap with `brew trust` for the upgrade and untrusts it afterwards. If an upgrade is
+interrupted, the next `safe-outdated`, `safe-upgrade`, or `safe-install` run removes
+the leftover tap and its trust entry. Homebrew allows
 `no_autobump!` only in official taps, so the command removes that call from the
 temporary copy. It only affects Homebrew's automatic version bumps.
 

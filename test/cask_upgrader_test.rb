@@ -258,14 +258,63 @@ class CaskUpgraderTest < Minitest::Test
       active_lock = File.open(active_locked/Safe::CaskUpgrader::LOCK_FILENAME, File::RDWR | File::CREAT, 0o600)
       active_lock.flock(File::LOCK_EX)
 
-      Safe::CaskUpgrader.cleanup_stale_temp_taps!(tap_directory: Pathname(dir))
+      runner = FakeRunner.new
+      Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: runner, brew_file: "/opt/homebrew/bin/brew",
+                                                  tap_directory: Pathname(dir), trusted_taps: -> { [] })
 
       refute_path_exists stale_locked
       assert_path_exists active_locked
       refute_path_exists incomplete
       assert_path_exists unrelated
+      assert_empty runner.calls
     ensure
       active_lock&.close
+    end
+  end
+
+  def test_cleanup_untrusts_temp_taps_whose_directory_is_gone_or_stale
+    Dir.mktmpdir do |dir|
+      root = Pathname(dir)/"2h2d-co"
+      (root/"homebrew-safe-temp-crashed").mkpath
+      (root/"homebrew-safe-temp-crashed"/Safe::CaskUpgrader::LOCK_FILENAME).write("")
+      active = root/"homebrew-safe-temp-active"
+      active.mkpath
+      active_lock = File.open(active/Safe::CaskUpgrader::LOCK_FILENAME, File::RDWR | File::CREAT, 0o600)
+      active_lock.flock(File::LOCK_EX)
+
+      trusted = %w[
+        2h2d-co/safe
+        2h2d-co/safe-temp-active
+        2h2d-co/safe-temp-crashed
+        2h2d-co/safe-temp-deleted
+        2h2d-co/tap
+        someone/safe-temp-deleted
+      ]
+      runner = FakeRunner.new
+      Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: runner, brew_file: "/opt/homebrew/bin/brew",
+                                                  tap_directory: Pathname(dir), trusted_taps: -> { trusted })
+
+      assert_equal [%w[untrust --tap 2h2d-co/safe-temp-crashed 2h2d-co/safe-temp-deleted]], runner.commands
+      env, brew_file, = runner.calls.first
+      assert_equal "/opt/homebrew/bin/brew", brew_file
+      assert_equal "1", env.fetch("HOMEBREW_NO_AUTO_UPDATE")
+      assert_path_exists active
+    ensure
+      active_lock&.close
+    end
+  end
+
+  def test_cleanup_warns_instead_of_failing_when_untrust_fails
+    Dir.mktmpdir do |dir|
+      runner = FakeRunner.new(fail_on: "untrust")
+
+      _stdout, stderr = capture_io do
+        Safe::CaskUpgrader.cleanup_stale_temp_taps!(runner: runner, brew_file: "/opt/homebrew/bin/brew",
+                                                    tap_directory: Pathname(dir),
+                                                    trusted_taps: -> { ["2h2d-co/safe-temp-deleted"] })
+      end
+
+      assert_match "Could not untrust stale temporary taps 2h2d-co/safe-temp-deleted: untrust failed", stderr
     end
   end
 end

@@ -60,4 +60,23 @@ rescue CommandRunnerChecked
   # Expected: no package resolution or mutation.
 end
 
+# Let each command pass auto-update, then stop it at the stale temporary tap cleanup.
+Safe::AutoUpdate.define_singleton_method(:run_if_needed!) { |**| nil }
+Safe::CaskUpgrader.define_singleton_method(:cleanup_stale_temp_taps!) do |runner:, brew_file:|
+  raise "Wrong cleanup runner" unless runner.equal?(SystemCommand)
+  raise "Wrong cleanup brew executable" unless brew_file == HOMEBREW_BREW_FILE
+
+  raise CommandRunnerChecked
+end
+
+[Homebrew::Cmd::SafeOutdated, Homebrew::Cmd::SafeUpgrade, Homebrew::Cmd::SafeInstall].each do |command|
+  command.allocate.run
+  raise "#{command} skipped stale temporary tap cleanup"
+rescue CommandRunnerChecked
+  # Expected: cleanup runs before package resolution.
+end
+
+# The real trust store reader must work with this Homebrew version.
+raise "Trusted taps are not an array" unless Safe::CaskUpgrader.send(:trusted_taps).is_a?(Array)
+
 puts "Homebrew subprocess regression checks passed"
