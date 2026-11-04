@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-11-04
+
 ### Fixed
 
 - Upgrade casks that declare `no_autobump!`, such as the Nerd Font casks, in `brew safe-upgrade`.
