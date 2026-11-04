@@ -12,9 +12,11 @@ class CaskUpgraderTest < Minitest::Test
     :latest_version,
     :upgrade_source_path,
     :upgrade_source_content,
+    :upgrade_commit_sha,
     keyword_init: true,
   )
-  Item = Struct.new(:full_name)
+  Item = Struct.new(:full_name, :tap)
+  FakeTap = Struct.new(:name, :path)
 
   class FakeRunner
     attr_reader :calls, :observed_cask_content
@@ -52,14 +54,95 @@ class CaskUpgraderTest < Minitest::Test
     )
   end
 
-  def upgrader(runner, dir, installed: "3.39.10", verbose: false)
+  # Records receipt updates in the runner's call log so tests can check their order.
+  def recording_receipt_updater(runner)
+    lambda do |candidate, from_tap|
+      runner.calls << [{}, nil, "retarget-receipt", candidate.item.full_name, from_tap]
+    end
+  end
+
+  def upgrader(runner, dir, installed: "3.39.10", verbose: false, receipt_updater: recording_receipt_updater(runner))
     Safe::CaskUpgrader.new(
       runner: runner,
       brew_file: "/opt/homebrew/bin/brew",
       tap_directory: Pathname(dir),
       installed_versions: ->(_candidate) { [installed] },
+      receipt_updater: receipt_updater,
       verbose: verbose,
     )
+  end
+
+  def test_successful_upgrade_retargets_the_receipt_before_untrusting
+    Dir.mktmpdir do |dir|
+      runner = FakeRunner.new
+      upgrader(runner, dir).upgrade!(candidate)
+
+      trust, upgrade, receipt, untrust = runner.commands
+      tap_name = trust.last
+      assert_equal "upgrade", upgrade.first
+      assert_equal ["retarget-receipt", "ngrok", tap_name], receipt
+      assert_equal ["untrust", "--tap", tap_name], untrust
+    end
+  end
+
+  def test_failed_upgrade_or_verification_leaves_the_receipt_alone
+    Dir.mktmpdir do |dir|
+      failed_upgrade = FakeRunner.new(fail_on: "upgrade")
+      assert_raises(RuntimeError) { upgrader(failed_upgrade, dir).upgrade!(candidate) }
+      assert_equal %w[trust upgrade untrust], failed_upgrade.commands.map(&:first)
+
+      wrong_version = FakeRunner.new
+      assert_raises(Safe::CaskUpgrader::UpgradeVerificationError) do
+        upgrader(wrong_version, dir, installed: "3.39.9").upgrade!(candidate)
+      end
+      assert_equal %w[trust upgrade untrust], wrong_version.commands.map(&:first)
+    end
+  end
+
+  def test_receipt_failure_only_warns_after_a_successful_upgrade
+    Dir.mktmpdir do |dir|
+      runner = FakeRunner.new
+      failing_updater = ->(_candidate, _from_tap) { raise Safe::CaskReceipt::Mismatch, "receipt changed" }
+
+      _stdout, stderr = capture_io do
+        upgrader(runner, dir, receipt_updater: failing_updater).upgrade!(candidate)
+      end
+
+      assert_match(%r{Left the install receipt of ngrok pointing at 2h2d-co/safe-temp-[^:]+: receipt changed}, stderr)
+      assert_equal %w[trust upgrade untrust], runner.commands.map(&:first)
+      assert_empty Dir.glob(File.join(dir, "2h2d-co", "homebrew-safe-temp-*"))
+    end
+  end
+
+  def test_default_receipt_update_refuses_unknown_or_temporary_source_taps
+    cases = {
+      "the cask has no source tap" => [nil, "abc123"],
+      "the cask's tap 2h2d-co/safe-temp-1-ab is temporary" => [FakeTap.new("2h2d-co/safe-temp-1-ab", Pathname("/t")),
+                                                             "abc123"],
+      "the source commit of the installed cask file is unknown" => [FakeTap.new("homebrew/cask", Pathname("/t")),
+                                                                    nil],
+    }
+
+    cases.each do |message, (tap, commit_sha)|
+      Dir.mktmpdir do |dir|
+        runner = FakeRunner.new
+        item_candidate = candidate
+        item_candidate.item = Item.new("ngrok", tap)
+        item_candidate.upgrade_commit_sha = commit_sha
+
+        _stdout, stderr = capture_io do
+          Safe::CaskUpgrader.new(
+            runner: runner,
+            brew_file: "/opt/homebrew/bin/brew",
+            tap_directory: Pathname(dir),
+            installed_versions: ->(_candidate) { ["3.39.10"] },
+          ).upgrade!(item_candidate)
+        end
+
+        assert_match "Left the install receipt of ngrok pointing at 2h2d-co/safe-temp-", stderr
+        assert_match message, stderr
+      end
+    end
   end
 
   def test_upgrade_writes_cask_to_temporary_tap_and_cleans_up
@@ -72,7 +155,7 @@ class CaskUpgraderTest < Minitest::Test
       upgrader(runner, dir).upgrade!(candidate)
 
       assert_equal NGROK_CASK, runner.observed_cask_content
-      assert_equal 3, runner.calls.length
+      assert_equal %w[trust upgrade retarget-receipt untrust], runner.commands.map(&:first)
       env, brew_file, *upgrade_args = runner.calls[1]
       assert_equal "/opt/homebrew/bin/brew", brew_file
       assert_equal %w[upgrade --cask], upgrade_args.first(2)
@@ -89,7 +172,7 @@ class CaskUpgraderTest < Minitest::Test
       runner = FakeRunner.new
       upgrader(runner, dir).upgrade!(candidate)
 
-      trust, upgrade, untrust = runner.commands
+      trust, upgrade, _receipt, untrust = runner.commands
       tap_directory = upgrade.last[%r{/2h2d-co/homebrew-(safe-temp-[^/]+)/}, 1]
       assert_equal ["trust", "--tap", "2h2d-co/#{tap_directory}"], trust
       assert_equal "upgrade", upgrade.first

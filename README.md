@@ -204,6 +204,12 @@ the leftover tap and its trust entry. Homebrew allows
 `no_autobump!` only in official taps, so the command removes that call from the
 temporary copy. It only affects Homebrew's automatic version bumps.
 
+After a verified upgrade, the command rewrites the cask's install receipt so it
+names the cask's real tap instead of the temporary one. The receipt also records
+the cask file's path in that tap and the commit it came from as `tap_git_head`.
+The command changes only a receipt that still names its temporary tap and the
+target version. Otherwise it leaves the receipt alone and prints a warning.
+
 ### Safety logic
 
 A package is "safe to upgrade" when its publication date is older than the configured cutoff. For Homebrew/core formulae, this may be the newest available version or the latest safe intermediate version.

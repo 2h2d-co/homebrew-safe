@@ -4,6 +4,7 @@ require "fileutils"
 require "pathname"
 require "prism"
 require "securerandom"
+require_relative "cask_receipt"
 
 module Safe
   class CaskUpgrader
@@ -95,12 +96,14 @@ module Safe
     end
     private_class_method :lock_available?
 
-    def initialize(runner:, brew_file:, tap_directory: nil, installed_versions: nil, verbose: false)
+    def initialize(runner:, brew_file:, tap_directory: nil, installed_versions: nil, receipt_updater: nil,
+                   verbose: false)
       @runner = runner
       @verbose = verbose
       @brew_file = brew_file
       @tap_directory = Pathname(tap_directory || HOMEBREW_TAP_DIRECTORY)
       @installed_versions = installed_versions || method(:default_installed_versions)
+      @receipt_updater = receipt_updater || method(:default_receipt_update)
     end
 
     def upgrade!(candidate)
@@ -138,6 +141,7 @@ module Safe
         tap_trusted = true
         run_brew("upgrade", *verbose_args, "--cask", cask_path.to_s, print_stdout: true)
         verify_target_installed!(candidate)
+        retarget_receipt(candidate, from_tap: tap_name)
       rescue StandardError => e
         upgrade_error = e
         raise
@@ -211,6 +215,32 @@ module Safe
       raise if upgrade_error.nil?
 
       warn "Could not untrust temporary tap #{tap_name}: #{e.message}"
+    end
+
+    # The upgrade has already succeeded, so a receipt that cannot be retargeted only warns.
+    def retarget_receipt(candidate, from_tap:)
+      @receipt_updater.call(candidate, from_tap)
+    rescue StandardError => e
+      warn "Left the install receipt of #{candidate.item.full_name} pointing at #{from_tap}: #{e.message}"
+    end
+
+    def default_receipt_update(candidate, from_tap)
+      cask = candidate.item
+      tap = cask.tap
+      raise CaskReceipt::Mismatch, "the cask has no source tap" if tap.nil?
+      raise CaskReceipt::Mismatch, "the cask's tap #{tap.name} is temporary" if tap.name.match?(TEMP_TAP_NAME_PATTERN)
+      if candidate.upgrade_commit_sha.to_s.empty?
+        raise CaskReceipt::Mismatch, "the source commit of the installed cask file is unknown"
+      end
+
+      CaskReceipt.retarget!(
+        tabfile: CaskReceipt.tabfile(cask),
+        from_tap: from_tap,
+        version: candidate.target_version || candidate.latest_version,
+        to_tap: tap.name,
+        path: tap.path/candidate.upgrade_source_path,
+        tap_git_head: candidate.upgrade_commit_sha,
+      )
     end
 
     def run_brew(*args, print_stdout:)

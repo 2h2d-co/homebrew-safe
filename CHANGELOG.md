@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Record the cask's real tap in its install receipt after `brew safe-upgrade`. The receipt
+  named the deleted temporary tap, so Homebrew found the cask only through its fallback for
+  missing taps. The receipt now names the cask's tap, the tap path of its cask file, and the
+  homebrew-cask commit it came from. A receipt that does not match the upgrade is left
+  unchanged with a warning.
+
 ## [0.2.6] - 2026-11-04
 
 ### Fixed
