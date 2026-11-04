@@ -189,8 +189,10 @@ for the historical target.
 
 Looks up verified GitHub commits for the cask's source file via the GitHub API. Set `HOMEBREW_GITHUB_API_TOKEN` or `GITHUB_TOKEN` to avoid rate limits.
 
-For casks, the commit date where a version first appears is used as a proxy for
-release age. It is not the upstream vendor's actual release date.
+For casks, the date of the oldest verified commit that carries a version is used
+as a proxy for release age. It is not the upstream vendor's actual release date.
+Unsigned commits are skipped. When the version bump itself is unsigned, the date
+comes from a later verified commit, so the reported date is later than the bump.
 
 If the newest cask version is too new, `safe-outdated` and `safe-upgrade` can
 walk recent cask history and select the latest safe intermediate version. Cask

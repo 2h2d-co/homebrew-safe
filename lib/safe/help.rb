@@ -18,9 +18,10 @@ module Safe
 
     DATES = <<~EOS.chomp
       A formula's date is when its bottle was published to GHCR. A cask's date is
-      when the Homebrew commit that added the version was made. Cask lookups use
-      the GitHub API, so authenticate with `gh auth login` or set
-      `HOMEBREW_GITHUB_API_TOKEN` to avoid rate limits.
+      when the oldest GitHub-verified Homebrew commit that carries the version was
+      made. Unsigned commits are skipped, so the date can be later than the version
+      bump. Cask lookups use the GitHub API, so authenticate with `gh auth login`
+      or set `HOMEBREW_GITHUB_API_TOKEN` to avoid rate limits.
     EOS
 
     AUTO_UPDATE = "Homebrew is updated first unless `HOMEBREW_NO_AUTO_UPDATE` is set."
