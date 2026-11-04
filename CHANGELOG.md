@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Upgrade casks that declare `no_autobump!`, such as the Nerd Font casks, in `brew safe-upgrade`.
+  Homebrew allows that call only in official taps, so loading the cask from the temporary tap
+  failed. The temporary copy now omits the call, which only affects Homebrew's automatic
+  version bumps.
+- Trust the temporary cask tap with `brew trust` for the duration of the upgrade and untrust it
+  afterwards, instead of setting the deprecated `HOMEBREW_NO_REQUIRE_TAP_TRUST`. This removes
+  the deprecation warning from every cask upgrade.
+
 ## [0.2.5] - 2026-10-22
 
 ### Fixed

@@ -2,11 +2,17 @@
 
 require "fileutils"
 require "pathname"
+require "prism"
 require "securerandom"
 
 module Safe
   class CaskUpgrader
     class UpgradeVerificationError < RuntimeError; end
+    class UnsupportedCaskSourceError < RuntimeError; end
+
+    # Homebrew allows these cask DSL calls only in official taps. They affect Homebrew's
+    # own maintenance, not installation, so they are removed from the temporary tap copy.
+    OFFICIAL_TAP_ONLY_CALLS = [:no_autobump!].freeze
 
     TEMP_TAP_USER = "2h2d-co"
     TEMP_TAP_PREFIX = "homebrew-safe-temp-"
@@ -73,6 +79,7 @@ module Safe
       if source_path.absolute? || source_path.each_filename.include?("..")
         raise "unsafe cask source path for #{candidate.item.full_name}"
       end
+      tap_content = temporary_tap_content(candidate)
 
       tap_lock = nil
       tap_path = nil
@@ -92,17 +99,95 @@ module Safe
 
       cask_path = tap_path/source_path
       FileUtils.mkdir_p(cask_path.dirname)
-      cask_path.write(candidate.upgrade_source_content)
+      cask_path.write(tap_content)
 
-      @runner.run!(@brew_file, args: brew_args("upgrade", "--cask", cask_path.to_s), env: brew_env,
-                   print_stdout: true, print_stderr: true)
-      verify_target_installed!(candidate)
+      tap_name = temp_tap_name(tap_path)
+      tap_trusted = false
+      upgrade_error = nil
+      begin
+        run_brew("trust", "--tap", tap_name, print_stdout: @verbose)
+        tap_trusted = true
+        run_brew("upgrade", *verbose_args, "--cask", cask_path.to_s, print_stdout: true)
+        verify_target_installed!(candidate)
+      rescue StandardError => e
+        upgrade_error = e
+        raise
+      ensure
+        untrust_temp_tap(tap_name, upgrade_error: upgrade_error) if tap_trusted
+      end
     ensure
       tap_lock&.close
       FileUtils.rm_rf(tap_path) if tap_path
     end
 
+    def self.remove_official_tap_only_calls(content)
+      result = Prism.parse(content)
+      unless result.success?
+        raise UnsupportedCaskSourceError, "cannot parse cask source: #{result.errors.map(&:message).join(", ")}"
+      end
+
+      # Prism reports byte offsets, so edit a binary copy.
+      bytes = content.b
+      ranges = official_tap_only_calls(result.value).map do |call|
+        call_start = call.location.start_offset
+        call_end = call.location.end_offset
+        line_start = bytes.rindex("\n", call_start)&.succ || 0
+        line_end = bytes.index("\n", call_end)&.succ || bytes.bytesize
+        alone_on_its_lines = bytes[line_start...call_start].strip.empty? && bytes[call_end...line_end].strip.empty?
+        alone_on_its_lines ? (line_start...line_end) : (call_start...call_end)
+      end
+
+      ranges.sort_by(&:begin).reverse_each { |range| bytes[range] = "" }
+      stripped = bytes.force_encoding(content.encoding)
+
+      reparsed = Prism.parse(stripped)
+      raise UnsupportedCaskSourceError, "removing official-tap-only calls broke the cask source" unless reparsed.success?
+
+      remaining = official_tap_only_calls(reparsed.value)
+      unless remaining.empty?
+        raise UnsupportedCaskSourceError, "could not remove #{remaining.map(&:name).uniq.join(", ")} from cask source"
+      end
+
+      stripped
+    end
+
+    def self.official_tap_only_calls(node)
+      calls = []
+      queue = [node]
+      until queue.empty?
+        current = queue.shift
+        calls << current if current.is_a?(Prism::CallNode) && OFFICIAL_TAP_ONLY_CALLS.include?(current.name)
+        queue.concat(current.compact_child_nodes)
+      end
+      calls
+    end
+    private_class_method :official_tap_only_calls
+
     private
+
+    def temporary_tap_content(candidate)
+      self.class.remove_official_tap_only_calls(candidate.upgrade_source_content)
+    rescue UnsupportedCaskSourceError => e
+      raise UnsupportedCaskSourceError, "#{candidate.item.full_name}: #{e.message}"
+    end
+
+    # Homebrew names the tap at `Taps/<user>/homebrew-<repository>` as `<user>/<repository>`.
+    def temp_tap_name(tap_path)
+      "#{TEMP_TAP_USER}/#{tap_path.basename.to_s.delete_prefix("homebrew-")}"
+    end
+
+    # Keeps the trust store clean without hiding the upgrade error that is already being raised.
+    def untrust_temp_tap(tap_name, upgrade_error:)
+      run_brew("untrust", "--tap", tap_name, print_stdout: @verbose)
+    rescue StandardError => e
+      raise if upgrade_error.nil?
+
+      warn "Could not untrust temporary tap #{tap_name}: #{e.message}"
+    end
+
+    def run_brew(*args, print_stdout:)
+      @runner.run!(@brew_file, args: args, env: brew_env, print_stdout: print_stdout, print_stderr: true)
+    end
 
     def verify_target_installed!(candidate)
       target_version = (candidate.target_version || candidate.latest_version).to_s
@@ -119,8 +204,8 @@ module Safe
     end
 
     # Passes `--verbose` so Homebrew prints its verification and post-install steps.
-    def brew_args(command, *args)
-      @verbose ? [command, "--verbose", *args] : [command, *args]
+    def verbose_args
+      @verbose ? ["--verbose"] : []
     end
 
     def brew_env
@@ -128,7 +213,6 @@ module Safe
         "HOMEBREW_NO_AUTO_UPDATE" => "1",
         "HOMEBREW_NO_ASK" => "1",
         "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
-        "HOMEBREW_NO_REQUIRE_TAP_TRUST" => "1",
         "HOMEBREW_NO_ENV_HINTS" => "1",
       }
     end

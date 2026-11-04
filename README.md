@@ -197,7 +197,10 @@ comes from a later verified commit, so the reported date is later than the bump.
 If the newest cask version is too new, `safe-outdated` and `safe-upgrade` can
 walk recent cask history and select the latest safe intermediate version. Cask
 upgrades are installed from the verified historical cask file through a temporary
-Homebrew tap so Homebrew still verifies the cask checksum.
+Homebrew tap so Homebrew still verifies the cask checksum. The command trusts that
+tap with `brew trust` for the upgrade and untrusts it afterwards. Homebrew allows
+`no_autobump!` only in official taps, so the command removes that call from the
+temporary copy. It only affects Homebrew's automatic version bumps.
 
 ### Safety logic
 
