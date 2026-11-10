@@ -16,6 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `--as-dependency`, so `brew autoremove` can remove them once nothing needs them.
   `brew safe-outdated` lists these installs and upgrades with the formulae that require them.
 
+### Fixed
+
+- Install older Homebrew/core formula versions again in `brew safe-upgrade` and
+  `brew safe-install`. Homebrew refuses formula file paths as package arguments, so every
+  upgrade or install that needed a version older than the newest failed with "No available
+  formula". The commands now install such a version through Homebrew's own install steps
+  instead of `brew install <path>`. An upgraded formula keeps its installed-on-request status.
+
 ## [0.2.7] - 2026-11-04
 
 ### Fixed

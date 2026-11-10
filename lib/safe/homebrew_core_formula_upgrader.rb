@@ -24,13 +24,15 @@ module Safe
 
     class UpgradeVerificationError < RuntimeError; end
 
+    # formula_file_installer: ->(formula_path, installed_on_request:) { installs the formula file }.
     def initialize(runner:, brew_file:, dependency_checker: nil, installed_versions: nil, cache_clearer: nil,
-                   verbose: false)
+                   formula_file_installer: nil, verbose: false)
       @runner = runner
       @verbose = verbose
       @brew_file = brew_file
       @history = Safe::FormulaHistory.new
       @dependency_checker = dependency_checker || method(:default_unsatisfied_dependencies)
+      @formula_file_installer = formula_file_installer || method(:install_formula_file)
       @installed_versions = installed_versions || method(:default_installed_versions)
       @cache_clearer = cache_clearer
     end
@@ -124,13 +126,7 @@ module Safe
       File.write(formula_path, historical_content)
 
       ensure_dependencies_satisfied!(candidate, formula_path, operation:)
-      @runner.run!(
-        @brew_file,
-        args: brew_args("install", *dependency_args(candidate), "--formula", formula_path),
-        env: brew_env,
-        print_stdout: true,
-        print_stderr: true,
-      )
+      @formula_file_installer.call(formula_path, installed_on_request: installed_on_request?(candidate))
     ensure
       restore_formula_file(formula_path, current_content) if defined?(formula_path)
       cleanup_local_homebrew_core_formula_path(formula_path, tap_was_installed) if defined?(formula_path) && defined?(tap_was_installed)
@@ -168,7 +164,7 @@ module Safe
       require "formulary"
 
       formula = if formula_path
-        Formulary.factory(formula_path)
+        Formulary.from_path(formula_path)
       else
         candidate.item.latest_formula
       end
@@ -249,6 +245,32 @@ module Safe
     # status, so `brew autoremove` can remove it once nothing needs it.
     def dependency_args(candidate)
       candidate.required_by ? ["--as-dependency"] : []
+    end
+
+    # Only a named install marks a formula as installed on request. Homebrew keeps
+    # the status of an installed formula that is not.
+    def installed_on_request?(candidate)
+      candidate.installed_version.nil? && candidate.required_by.nil?
+    end
+
+    # Homebrew accepts only formula names as package arguments, so `brew install`
+    # cannot install a historical formula file. This runs the steps `brew install`
+    # runs, in this process, on the file loaded from the homebrew/core tap path.
+    def install_formula_file(formula_path, installed_on_request:)
+      require "formulary"
+      require "install"
+
+      formula = Formulary.from_path(formula_path)
+      return unless Homebrew::Install.install_formula?(formula, installed_on_request:)
+
+      installers = Homebrew::Install.formula_installers([formula], installed_on_request:, verbose: @verbose)
+      installers = Homebrew::Install.fetch_formulae(installers)
+      Homebrew::Install.perform_preinstall_checks_once
+      installed = Homebrew::Install.install_formulae(installers, verbose: @verbose, cleanup: false)
+      Homebrew::Install.finish_installation(formulae: installed, casks: [])
+    rescue SystemExit => e
+      # Homebrew exits on some install errors. Fail this formula, not the whole run.
+      raise "Homebrew stopped installing #{File.basename(formula_path, ".rb")} with exit status #{e.status}"
     end
 
     # Passes `--verbose` so Homebrew prints its verification and post-install steps.

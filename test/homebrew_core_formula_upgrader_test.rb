@@ -36,6 +36,19 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
+  # Records each historical formula file install with the file's content at that moment.
+  class FakeFileInstaller
+    attr_reader :calls
+
+    def initialize
+      @calls = []
+    end
+
+    def call(formula_path, installed_on_request:)
+      @calls << [formula_path, File.read(formula_path), installed_on_request]
+    end
+  end
+
   class FakeHistory
     def initialize(content)
       @content = content
@@ -49,20 +62,23 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
-  def test_upgrade_installs_historical_formula_file_from_minimal_local_core_path_when_core_is_not_tapped
+  def test_upgrade_installs_historical_formula_file_in_process_from_minimal_local_core_path
     Dir.mktmpdir do |dir|
       with_homebrew_library(Pathname(dir)) do
         runner = FakeRunner.new
+        file_installer = FakeFileInstaller.new
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
           runner: runner,
           brew_file: "/opt/homebrew/bin/brew",
           dependency_checker: ->(_candidate, _formula_path) { [] },
           installed_versions: ->(candidate) { [candidate.target_version] },
+          formula_file_installer: file_installer,
         )
         upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
 
         candidate = Candidate.new(
           type: :formula,
+          installed_version: "2026.4.1",
           target_version: "2026.4.11",
           latest_version: "2026.4.15",
           upgrade_commit_sha: "abc123",
@@ -74,25 +90,15 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
 
         formula_path = Pathname(dir)/"Taps/homebrew/homebrew-core/Formula/m/mise.rb"
 
-        assert_equal [[
-          {
-            "HOMEBREW_NO_AUTO_UPDATE" => "1",
-            "HOMEBREW_NO_ASK" => "1",
-            "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
-          },
-          "/opt/homebrew/bin/brew",
-          "install",
-          "--formula",
-          formula_path.to_s,
-        ]], runner.calls
-
+        assert_empty runner.calls
+        assert_equal [[formula_path.to_s, "class Mise < Formula; end\n", false]], file_installer.calls
         refute formula_path.exist?
         refute formula_path.parent.parent.parent.exist?
       end
     end
   end
 
-  def test_upgrade_restores_existing_formula_file_in_local_core_path
+  def test_named_install_marks_installed_on_request_and_restores_existing_formula_file_in_local_core_path
     Dir.mktmpdir do |dir|
       with_homebrew_library(Pathname(dir)) do
         tap_path = Pathname(dir)/"Taps/homebrew/homebrew-core"
@@ -101,11 +107,13 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         formula_path.write("class Mise < Formula\n  desc \"current\"\nend\n")
 
         runner = FakeRunner.new
+        file_installer = FakeFileInstaller.new
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
           runner: runner,
           brew_file: "/opt/homebrew/bin/brew",
           dependency_checker: ->(_candidate, _formula_path) { [] },
           installed_versions: ->(candidate) { [candidate.target_version] },
+          formula_file_installer: file_installer,
         )
         upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula\n  desc \"historical\"\nend\n"))
 
@@ -118,19 +126,11 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
           item: Item.new("mise"),
         )
 
-        upgrader.upgrade!(candidate)
+        upgrader.install!(candidate)
 
-        assert_equal [[
-          {
-            "HOMEBREW_NO_AUTO_UPDATE" => "1",
-            "HOMEBREW_NO_ASK" => "1",
-            "HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK" => "1",
-          },
-          "/opt/homebrew/bin/brew",
-          "install",
-          "--formula",
-          formula_path.to_s,
-        ]], runner.calls
+        assert_empty runner.calls
+        assert_equal [[formula_path.to_s, "class Mise < Formula\n  desc \"historical\"\nend\n", true]],
+                     file_installer.calls
         assert_equal "class Mise < Formula\n  desc \"current\"\nend\n", formula_path.read
       end
     end
@@ -206,11 +206,13 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     Dir.mktmpdir do |dir|
       with_homebrew_library(Pathname(dir)) do
         runner = FakeRunner.new
+        file_installer = FakeFileInstaller.new
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
           runner: runner,
           brew_file: "/opt/homebrew/bin/brew",
           dependency_checker: ->(_candidate, _formula_path) { [] },
           installed_versions: ->(candidate) { [candidate.target_version] },
+          formula_file_installer: file_installer,
         )
         upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
         curl = direct_candidate(name: "curl", latest: "8.23.0", installed: nil)
@@ -235,10 +237,10 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         formula_path = Pathname(dir)/"Taps/homebrew/homebrew-core/Formula/m/mise.rb"
         assert_equal [
           ["install", "--as-dependency", "--formula", "curl"],
-          ["install", "--as-dependency", "--formula", formula_path.to_s],
           ["upgrade", "--formula", "openssl@3"],
           ["upgrade", "--formula", "git"],
         ], runner.calls.map { |call| call.drop(2) }
+        assert_equal [[formula_path.to_s, "class Mise < Formula; end\n", false]], file_installer.calls
       end
     end
   end
@@ -298,40 +300,26 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     assert_equal 1, runner.calls.size
   end
 
-  private
+  def test_verbose_upgrader_passes_verbose_to_brew_commands
+    runner = FakeRunner.new
+    upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+      runner: runner,
+      brew_file: "/opt/homebrew/bin/brew",
+      dependency_checker: ->(_candidate, _formula_path) { [] },
+      installed_versions: ->(candidate) { [candidate.target_version] },
+      verbose: true,
+    )
 
-  def test_verbose_upgrader_passes_verbose_to_latest_and_historical_installs
-    Dir.mktmpdir do |dir|
-      with_homebrew_library(Pathname(dir)) do
-        runner = FakeRunner.new
-        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
-          runner: runner,
-          brew_file: "/opt/homebrew/bin/brew",
-          dependency_checker: ->(_candidate, _formula_path) { [] },
-          installed_versions: ->(candidate) { [candidate.target_version] },
-          verbose: true,
-        )
-        upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
-        historical = Candidate.new(
-          type: :formula,
-          target_version: "2026.4.11",
-          latest_version: "2026.4.15",
-          upgrade_commit_sha: "abc123",
-          upgrade_source_path: "Formula/m/mise.rb",
-          item: Item.new("mise"),
-        )
+    upgrader.upgrade!(direct_candidate(name: "usage", latest: "5.0.0"))
+    upgrader.install!(direct_candidate(name: "mise", latest: "2026.8.2", installed: nil))
 
-        upgrader.upgrade!(direct_candidate(name: "usage", latest: "5.0.0"))
-        upgrader.upgrade!(historical)
-
-        formula_path = Pathname(dir)/"Taps/homebrew/homebrew-core/Formula/m/mise.rb"
-        assert_equal [
-          ["upgrade", "--verbose", "--formula", "usage"],
-          ["install", "--verbose", "--formula", formula_path.to_s],
-        ], runner.calls.map { |call| call.drop(2) }
-      end
-    end
+    assert_equal [
+      ["upgrade", "--verbose", "--formula", "usage"],
+      ["install", "--verbose", "--formula", "mise"],
+    ], runner.calls.map { |call| call.drop(2) }
   end
+
+  private
 
   def direct_candidate(name:, latest:, installed: "1.0.0")
     Candidate.new(
