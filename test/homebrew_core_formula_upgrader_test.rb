@@ -8,6 +8,8 @@ require "safe/homebrew_core_formula_upgrader"
 class HomebrewCoreFormulaUpgraderTest < Minitest::Test
   Candidate = Struct.new(
     :type,
+    :installed_version,
+    :required_by,
     :target_version,
     :latest_version,
     :upgrade_commit_sha,
@@ -134,7 +136,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
-  def test_upgrade_all_defers_a_formula_until_its_safe_dependency_is_installed
+  def test_install_or_upgrade_all_upgrades_installed_formulae_and_defers_one_until_its_dependency_is_upgraded
     installed = []
     runner = FakeRunner.new do |*args|
       installed << args.last
@@ -157,14 +159,17 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     mise = direct_candidate(name: "mise", latest: "2026.8.2")
     usage = direct_candidate(name: "usage", latest: "5.0.0")
 
-    result = upgrader.upgrade_all([mise, usage])
+    result = upgrader.install_or_upgrade_all([mise, usage])
 
     assert_equal %w[usage mise], result.upgraded.map { |candidate| candidate.item.full_name }
     assert_empty result.failures
-    assert_equal %w[usage mise], runner.calls.map(&:last)
+    assert_equal [
+      ["/opt/homebrew/bin/brew", "upgrade", "--formula", "usage"],
+      ["/opt/homebrew/bin/brew", "upgrade", "--formula", "mise"],
+    ], runner.calls.map { |call| call.drop(1) }
   end
 
-  def test_install_all_uses_install_and_defers_a_formula_until_its_safe_dependency_is_installed
+  def test_install_or_upgrade_all_installs_uninstalled_formulae_and_defers_one_until_its_dependency_is_installed
     installed = []
     runner = FakeRunner.new do |*args|
       installed << args.last
@@ -184,10 +189,10 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
         installed.include?(candidate.item.full_name) ? [candidate.target_version] : []
       },
     )
-    mise = direct_candidate(name: "mise", latest: "2026.7.18")
-    usage = direct_candidate(name: "usage", latest: "4.1.0")
+    mise = direct_candidate(name: "mise", latest: "2026.7.18", installed: nil)
+    usage = direct_candidate(name: "usage", latest: "4.1.0", installed: nil)
 
-    result = upgrader.install_all([mise, usage])
+    result = upgrader.install_or_upgrade_all([mise, usage])
 
     assert_equal %w[usage mise], result.upgraded.map { |candidate| candidate.item.full_name }
     assert_empty result.failures
@@ -195,6 +200,47 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
       ["/opt/homebrew/bin/brew", "install", "--formula", "usage"],
       ["/opt/homebrew/bin/brew", "install", "--formula", "mise"],
     ], runner.calls.map { |call| call.drop(1) }
+  end
+
+  def test_install_or_upgrade_all_installs_added_dependencies_as_dependencies
+    Dir.mktmpdir do |dir|
+      with_homebrew_library(Pathname(dir)) do
+        runner = FakeRunner.new
+        upgrader = Safe::HomebrewCoreFormulaUpgrader.new(
+          runner: runner,
+          brew_file: "/opt/homebrew/bin/brew",
+          dependency_checker: ->(_candidate, _formula_path) { [] },
+          installed_versions: ->(candidate) { [candidate.target_version] },
+        )
+        upgrader.instance_variable_set(:@history, FakeHistory.new("class Mise < Formula; end\n"))
+        curl = direct_candidate(name: "curl", latest: "8.23.0", installed: nil)
+        curl.required_by = ["git"]
+        historical = Candidate.new(
+          type: :formula,
+          installed_version: nil,
+          required_by: ["git"],
+          target_version: "2026.4.11",
+          latest_version: "2026.4.15",
+          upgrade_commit_sha: "abc123",
+          upgrade_source_path: "Formula/m/mise.rb",
+          item: Item.new("mise"),
+        )
+        openssl = direct_candidate(name: "openssl@3", latest: "3.6.3", installed: "3.6.1")
+        openssl.required_by = ["curl"]
+        git = direct_candidate(name: "git", latest: "2.56.0_2", installed: "2.56.0_1")
+
+        result = upgrader.install_or_upgrade_all([curl, historical, openssl, git])
+
+        assert_empty result.failures
+        formula_path = Pathname(dir)/"Taps/homebrew/homebrew-core/Formula/m/mise.rb"
+        assert_equal [
+          ["install", "--as-dependency", "--formula", "curl"],
+          ["install", "--as-dependency", "--formula", formula_path.to_s],
+          ["upgrade", "--formula", "openssl@3"],
+          ["upgrade", "--formula", "git"],
+        ], runner.calls.map { |call| call.drop(2) }
+      end
+    end
   end
 
   def test_upgrade_clears_cached_homebrew_state_after_dependency_preflight_and_install
@@ -224,7 +270,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     )
     mise = direct_candidate(name: "mise", latest: "2026.8.3")
 
-    result = upgrader.upgrade_all([mise])
+    result = upgrader.install_or_upgrade_all([mise])
 
     assert_empty result.upgraded
     assert_equal 1, result.failures.size
@@ -243,7 +289,7 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     )
     candidate = direct_candidate(name: "usage", latest: "5.1.0")
 
-    result = upgrader.upgrade_all([candidate])
+    result = upgrader.install_or_upgrade_all([candidate])
 
     assert_empty result.upgraded
     assert_equal 1, result.failures.size
@@ -287,9 +333,10 @@ class HomebrewCoreFormulaUpgraderTest < Minitest::Test
     end
   end
 
-  def direct_candidate(name:, latest:)
+  def direct_candidate(name:, latest:, installed: "1.0.0")
     Candidate.new(
       type: :formula,
+      installed_version: installed,
       target_version: latest,
       latest_version: latest,
       upgrade_commit_sha: nil,

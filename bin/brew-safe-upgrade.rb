@@ -18,10 +18,13 @@
 #:  or a date such as `2026-01-01` or `2026-01-01T00:00:00Z`.
 #:
 #:  A formula upgrade also needs its runtime dependencies at the versions its
-#:  bottle requires. Passing dependency upgrades are installed first. A
-#:  dependency that is not installed, or has no passing upgrade to a required
-#:  version, makes the command use an older passing version or skip the formula.
-#:  Outdated dependents are not upgraded unless they pass the gate themselves.
+#:  bottle requires. The command installs missing dependencies and upgrades
+#:  outdated ones first, at versions that pass the gate, even when they are not
+#:  named. It marks the formulae it installs this way as dependencies, so
+#:  `brew autoremove` can remove them once nothing needs them. A dependency
+#:  without a passing version that meets the requirement makes the command use
+#:  an older passing version or skip the formula. Outdated dependents are not
+#:  upgraded unless they pass the gate themselves.
 #:
 #:  After upgrading, the command lists the upgrades it skipped and why.
 #:

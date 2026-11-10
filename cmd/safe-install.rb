@@ -9,6 +9,7 @@ require_relative "../lib/safe/config"
 require_relative "../lib/safe/resolver"
 require_relative "../lib/safe/date_filter"
 require_relative "../lib/safe/auto_update"
+require_relative "../lib/safe/candidate_details"
 require_relative "../lib/safe/cask_upgrader"
 require_relative "../lib/safe/homebrew_core_formula_upgrader"
 
@@ -19,6 +20,13 @@ module Homebrew
         description <<~EOS
           Install formulae at the newest versions that pass the release date
           safety gate. Versions released too recently are skipped.
+
+          The command also installs missing runtime dependencies and upgrades
+          outdated ones at versions that pass the gate, even when they are not
+          named. It marks the formulae it installs this way as dependencies, so
+          `brew autoremove` can remove them once nothing needs them. A dependency
+          without a passing version that meets the requirement makes the command use
+          an older passing version or skip the formula.
         EOS
         flag   "--before=",
                description: "Cutoff: only install versions older than this (e.g. 7d, 30d, 2026-01-01)."
@@ -63,11 +71,13 @@ module Homebrew
         end
 
         upgrader = Safe::HomebrewCoreFormulaUpgrader.new(runner: SystemCommand, brew_file: HOMEBREW_BREW_FILE)
-        result = upgrader.install_all(safe)
+        result = upgrader.install_or_upgrade_all(safe)
 
         puts
         ohai "Summary"
-        puts "Installed: #{result.upgraded.size}"
+        puts "Installed: #{result.upgraded.count { |candidate| candidate.installed_version.nil? }}"
+        upgraded_dependencies = result.upgraded.count(&:installed_version)
+        puts "Upgraded dependencies: #{upgraded_dependencies}" if upgraded_dependencies.positive?
         print_failures(result.failures)
         print_skipped(blocked, too_new, unknown, no_cutoff)
 
@@ -108,8 +118,8 @@ module Homebrew
           else
             ""
           end
-          puts "#{candidate.item.full_name} -> #{candidate.target_version} " \
-               "(released #{target_date&.split("T")&.first}#{latest})"
+          puts "#{candidate.item.full_name} #{versions(candidate)} " \
+               "(released #{target_date&.split("T")&.first}#{latest}#{Safe::CandidateDetails.required_by(candidate)})"
         end
       end
 
@@ -126,9 +136,15 @@ module Homebrew
         puts
         ohai "Skipped (blocked by dependencies): #{blocked.size}"
         blocked.each do |candidate|
-          puts "  #{candidate.item.full_name} -> #{candidate.target_version} requires: " \
+          required = candidate.required_by ? " (required by #{candidate.required_by.join(", ")})" : ""
+          puts "  #{candidate.item.full_name} #{versions(candidate)}#{required} requires: " \
                "#{candidate.blocked_dependencies.join("; ")}"
         end
+      end
+
+      # "-> 1.2" for a named formula, "1.0 -> 1.2" for a dependency upgrade.
+      def versions(candidate)
+        [candidate.installed_version, "->", candidate.target_version].compact.join(" ")
       end
 
       def print_skipped_group(heading, candidates)

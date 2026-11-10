@@ -17,9 +17,10 @@
 #:  or a date such as `2026-01-01` or `2026-01-01T00:00:00Z`.
 #:
 #:  A formula upgrade also needs its runtime dependencies at the versions its
-#:  bottle requires. Each dependency must be installed at such a version or have
-#:  a passing upgrade to one. Otherwise the command uses an older passing version
-#:  or reports the formula as blocked by dependencies.
+#:  bottle requires. A missing dependency is listed as an install, and an
+#:  outdated one as an upgrade, when it has a passing version that meets the
+#:  requirement, even when it is not named. Otherwise the command uses an older
+#:  passing version or reports the formula as blocked by dependencies.
 #:
 #:  By default, only passing upgrades are listed. Use `--verbose` or `--json` to
 #:  also see skipped upgrades: too new, date unknown, no cutoff configured,

@@ -16,7 +16,19 @@ module Safe
         details += "; latest: #{candidate.latest_version} #{release(candidate.publication_date, now:)}"
       end
 
-      "#{label} #{candidate.installed_version} -> #{target_version} (#{details})"
+      "#{label} #{versions(candidate, target_version)} (#{details}#{required_by(candidate)})"
+    end
+
+    # "1.0 -> 1.2", or "not installed -> 1.2" for a dependency the plan installs.
+    def versions(candidate, target_version)
+      "#{candidate.installed_version || "not installed"} -> #{target_version}"
+    end
+
+    # "; required by git" for a dependency the plan added, otherwise "".
+    def required_by(candidate)
+      return "" unless candidate.required_by&.any?
+
+      "; required by #{candidate.required_by.join(", ")}"
     end
 
     def release(date, now: nil)

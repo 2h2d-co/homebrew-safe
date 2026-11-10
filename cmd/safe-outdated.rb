@@ -29,9 +29,10 @@ module Homebrew
           #{Safe::Help::CUTOFF}
 
           A formula upgrade also needs its runtime dependencies at the versions its
-          bottle requires. Each dependency must be installed at such a version or have
-          a passing upgrade to one. Otherwise the command uses an older passing version
-          or reports the formula as blocked by dependencies.
+          bottle requires. A missing dependency is listed as an install, and an
+          outdated one as an upgrade, when it has a passing version that meets the
+          requirement, even when it is not named. Otherwise the command uses an older
+          passing version or reports the formula as blocked by dependencies.
 
           By default, only passing upgrades are listed. Use `--verbose` or `--json` to
           also see skipped upgrades: too new, date unknown, no cutoff configured,
@@ -128,7 +129,8 @@ module Homebrew
         safe.each do |c|
           date = safe_publication_date(c)
           date_info = date ? ", released #{date.split("T").first}" : ""
-          puts "#{c.item.full_name} (#{c.installed_version} -> #{target_version(c)}#{date_info})"
+          required = c.required_by ? ", required by #{c.required_by.join(", ")}" : ""
+          puts "#{c.item.full_name} (#{Safe::CandidateDetails.versions(c, target_version(c))}#{date_info}#{required})"
         end
       end
 
@@ -146,7 +148,8 @@ module Homebrew
           puts if safe.any?
           ohai "Blocked by dependencies"
           blocked.each do |c|
-            puts "#{c.item.full_name} #{c.installed_version} -> #{target_version(c)} requires:"
+            required = c.required_by ? " (required by #{c.required_by.join(", ")})" : ""
+            puts "#{c.item.full_name} #{Safe::CandidateDetails.versions(c, target_version(c))}#{required} requires:"
             c.blocked_dependencies.each { |dependency| puts "  #{dependency}" }
           end
         end
@@ -207,6 +210,7 @@ module Homebrew
           latest_publication_date: c.publication_date,
           before: c.before_value,
           safe: c.safe,
+          required_by: c.required_by,
         }
       end
 

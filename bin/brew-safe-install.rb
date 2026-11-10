@@ -7,6 +7,13 @@
 #:  Install formulae at the newest versions that pass the release date
 #:  safety gate. Versions released too recently are skipped.
 #:
+#:  The command also installs missing runtime dependencies and upgrades
+#:  outdated ones at versions that pass the gate, even when they are not
+#:  named. It marks the formulae it installs this way as dependencies, so
+#:  `brew autoremove` can remove them once nothing needs them. A dependency
+#:  without a passing version that meets the requirement makes the command use
+#:  an older passing version or skip the formula.
+#:
 #:        --before                     Cutoff: only install versions older than this
 #:                                     (e.g. 7d, 30d, 2026-01-01).
 #:    -n, --dry-run                    Show what would be installed without

@@ -35,25 +35,9 @@ module Safe
       @cache_clearer = cache_clearer
     end
 
-    def upgrade_all(candidates)
-      run_all(candidates, action: :upgrade!)
-    end
-
-    def install_all(candidates)
-      run_all(candidates, action: :install!)
-    end
-
-    def upgrade!(candidate)
-      install_target!(candidate, operation: "upgrade")
-    end
-
-    def install!(candidate)
-      install_target!(candidate, operation: "install")
-    end
-
-    private
-
-    def run_all(candidates, action:)
+    # Installs candidates without an installed version and upgrades the others.
+    # A candidate waits until the other candidates it depends on are in place.
+    def install_or_upgrade_all(candidates)
       pending = candidates.dup
       upgraded = []
       failures = []
@@ -65,7 +49,7 @@ module Safe
 
         pending.each do |candidate|
           begin
-            public_send(action, candidate)
+            candidate.installed_version ? upgrade!(candidate) : install!(candidate)
             upgraded << candidate
             made_progress = true
           rescue UnsatisfiedDependenciesError => e
@@ -94,6 +78,16 @@ module Safe
 
       Result.new(upgraded: upgraded, failures: failures)
     end
+
+    def upgrade!(candidate)
+      install_target!(candidate, operation: "upgrade")
+    end
+
+    def install!(candidate)
+      install_target!(candidate, operation: "install")
+    end
+
+    private
 
     def install_target!(candidate, operation:)
       if intermediate_candidate?(candidate)
@@ -132,7 +126,7 @@ module Safe
       ensure_dependencies_satisfied!(candidate, formula_path, operation:)
       @runner.run!(
         @brew_file,
-        args: brew_args("install", "--formula", formula_path),
+        args: brew_args("install", *dependency_args(candidate), "--formula", formula_path),
         env: brew_env,
         print_stdout: true,
         print_stderr: true,
@@ -155,7 +149,8 @@ module Safe
       ensure_dependencies_satisfied!(candidate, nil, operation:)
       @runner.run!(
         @brew_file,
-        args: brew_args(operation, "--formula", candidate.item.full_name),
+        args: brew_args(operation, *(operation == "install" ? dependency_args(candidate) : []), "--formula",
+                        candidate.item.full_name),
         env: brew_env,
         print_stdout: true,
         print_stderr: true,
@@ -248,6 +243,12 @@ module Safe
       else
         File.write(formula_path, current_content)
       end
+    end
+
+    # A dependency the plan added keeps or gets Homebrew's installed-as-dependency
+    # status, so `brew autoremove` can remove it once nothing needs it.
+    def dependency_args(candidate)
+      candidate.required_by ? ["--as-dependency"] : []
     end
 
     # Passes `--verbose` so Homebrew prints its verification and post-install steps.

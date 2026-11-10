@@ -44,13 +44,10 @@ brew safe-install --dry-run --before=2026-08-01 mise usage
 brew safe-install --before=2026-08-01 mise usage
 ```
 
-All named formulae must be uninstalled. Name required dependencies explicitly.
-Before installing anything, `safe-install` checks each selected bottle's runtime
-dependencies. A dependency that is not installed must be named in the same
-command with a safe target that meets the bottle's minimum version. Otherwise the
-formula falls back to an older safe version whose dependencies are met, or is
-skipped as blocked by dependencies with the unmet requirements listed. Homebrew
-never resolves an unnamed dependency to an ungated version.
+All named formulae must be uninstalled. Before installing anything, `safe-install`
+checks each selected bottle's runtime dependencies and adds the missing or outdated
+ones to the plan, as [`safe-upgrade`](#brew-safe-upgrade) describes. Homebrew never
+resolves a dependency to an ungated version.
 
 ### `brew safe-outdated`
 
@@ -101,16 +98,19 @@ For Homebrew/core formulae, this can upgrade to the latest safe intermediate ver
 when the newest version is still too new.
 
 Both `safe-outdated` and `safe-upgrade` check each formula target bottle's exact
-runtime dependency requirements before listing it as safe. The installed version of
-each required dependency must satisfy the requirement, or the dependency must have a
-safe upgrade target that does. When neither holds, the formula falls back to an older
-safe Homebrew/core version whose requirements are met. If no such version exists, it
-is listed as blocked by dependencies with the unmet requirements, and `safe-upgrade`
-skips it. Neither command installs a dependency that is not already installed.
+runtime dependency requirements before listing it as safe. Each required dependency
+must be installed at a version that satisfies the requirement, or have a safe target
+that does. A missing dependency with such a target is added to the plan as an install,
+and an outdated one as an upgrade, even when it is not named. These entries show which
+formulae require them, and `--json` lists them under `required_by`. When a dependency
+has no such target, the formula falls back to an older safe Homebrew/core version
+whose requirements are met. If no such version exists, it is listed as blocked by
+dependencies with the unmet requirements, and `safe-upgrade` skips it.
 
-During an upgrade, safe dependency targets are installed first. `safe-upgrade` checks
-the requirements again before each install, so Homebrew cannot resolve a dependency
-to an unsafe newer version.
+During an upgrade, safe dependency targets are installed first. New dependencies are
+installed with `brew install --as-dependency`, so `brew autoremove` can remove them
+once nothing needs them. `safe-upgrade` checks the requirements again before each
+install, so Homebrew cannot resolve a dependency to an unsafe newer version.
 
 ```sh
 # Upgrade safe packages

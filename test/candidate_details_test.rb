@@ -7,6 +7,7 @@ require "safe/candidate_details"
 class CandidateDetailsTest < Minitest::Test
   Candidate = Struct.new(
     :item, :installed_version, :target_version, :latest_version, :target_publication_date, :publication_date,
+    :required_by,
     keyword_init: true,
   )
   Item = Struct.new(:full_name)
@@ -41,6 +42,16 @@ class CandidateDetailsTest < Minitest::Test
     )
 
     assert_equal "ngrok 3.1 -> 3.2 (released 2026-02-09, today)",
+                 Safe::CandidateDetails.upgrade(candidate, now: NOW)
+  end
+
+  def test_added_dependency_install_shows_that_it_is_not_installed_and_what_requires_it
+    candidate = Candidate.new(
+      item: Item.new("curl"), target_version: "8.23.0", latest_version: "8.23.0",
+      publication_date: "2026-02-01T12:00:00Z", required_by: %w[git libpq]
+    )
+
+    assert_equal "curl not installed -> 8.23.0 (released 2026-02-01, 8 days ago; required by git, libpq)",
                  Safe::CandidateDetails.upgrade(candidate, now: NOW)
   end
 

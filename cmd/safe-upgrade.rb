@@ -29,10 +29,13 @@ module Homebrew
           #{Safe::Help::CUTOFF}
 
           A formula upgrade also needs its runtime dependencies at the versions its
-          bottle requires. Passing dependency upgrades are installed first. A
-          dependency that is not installed, or has no passing upgrade to a required
-          version, makes the command use an older passing version or skip the formula.
-          Outdated dependents are not upgraded unless they pass the gate themselves.
+          bottle requires. The command installs missing dependencies and upgrades
+          outdated ones first, at versions that pass the gate, even when they are not
+          named. It marks the formulae it installs this way as dependencies, so
+          `brew autoremove` can remove them once nothing needs them. A dependency
+          without a passing version that meets the requirement makes the command use
+          an older passing version or skip the formula. Outdated dependents are not
+          upgraded unless they pass the gate themselves.
 
           After upgrading, the command lists the upgrades it skipped and why.
 
@@ -114,6 +117,7 @@ module Homebrew
         safe_casks = safe.select { |c| c.type == :cask }
 
         upgraded = 0
+        installed = 0
         failures = []
 
         if safe_formulae.any?
@@ -122,8 +126,9 @@ module Homebrew
             brew_file: HOMEBREW_BREW_FILE,
             verbose: @verbose,
           )
-          result = formula_upgrader.upgrade_all(safe_formulae)
-          upgraded += result.upgraded.size
+          result = formula_upgrader.install_or_upgrade_all(safe_formulae)
+          installed += result.upgraded.count { |candidate| candidate.installed_version.nil? }
+          upgraded += result.upgraded.count(&:installed_version)
           failures.concat(result.failures.map { |failure| [failure.candidate, failure.error] })
         end
 
@@ -142,6 +147,7 @@ module Homebrew
         puts
         ohai "Summary"
         puts "Upgraded: #{upgraded}"
+        puts "Installed dependencies: #{installed}" if installed.positive?
         print_failures(failures)
         print_skipped_summary(blocked, too_new, unknown, no_cutoff)
 
@@ -168,14 +174,15 @@ module Homebrew
           label = "#{c.item.full_name}#{cutoff_annotation(c)}"
           if @verbose
             puts Safe::CandidateDetails.upgrade(c, label:)
-          elsif intermediate_target?(c)
-            safe_date = safe_publication_date(c)
-            latest_date = c.publication_date
-            puts "#{label} #{c.installed_version} -> #{target_version(c)} (released #{safe_date&.split("T")&.first}; latest: #{c.latest_version} released #{latest_date&.split("T")&.first})"
           else
             date = safe_publication_date(c)
-            date_info = date ? " (released #{date.split("T").first})" : ""
-            puts "#{label} #{c.installed_version} -> #{target_version(c)}#{date_info}"
+            details = [("released #{date.split("T").first}" if date)]
+            if intermediate_target?(c)
+              details << "latest: #{c.latest_version} released #{c.publication_date&.split("T")&.first}"
+            end
+            details << required_by(c)
+            details.compact!
+            puts "#{label} #{versions(c)}#{" (#{details.join("; ")})" if details.any?}"
           end
         end
       end
@@ -185,7 +192,8 @@ module Homebrew
           puts
           ohai "Skipped (blocked by dependencies): #{blocked.size}"
           blocked.each do |c|
-            puts "  #{c.item.full_name} #{c.installed_version} -> #{target_version(c)} requires: #{c.blocked_dependencies.join("; ")}"
+            required = c.required_by ? " (required by #{c.required_by.join(", ")})" : ""
+            puts "  #{c.item.full_name} #{versions(c)}#{required} requires: #{c.blocked_dependencies.join("; ")}"
           end
         end
 
@@ -241,6 +249,14 @@ module Homebrew
 
       def target_version(candidate)
         candidate.target_version || candidate.latest_version
+      end
+
+      def versions(candidate)
+        Safe::CandidateDetails.versions(candidate, target_version(candidate))
+      end
+
+      def required_by(candidate)
+        "required by #{candidate.required_by.join(", ")}" if candidate.required_by&.any?
       end
 
       def safe_publication_date(candidate)

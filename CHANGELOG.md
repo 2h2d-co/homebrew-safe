@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Install missing runtime dependencies and upgrade outdated ones in `brew safe-upgrade` and
+  `brew safe-install`, at versions that pass the release-age gate. Previously a formula whose
+  new bottle needs a dependency that is not installed, such as git needing curl, was skipped
+  as blocked by dependencies until the dependency was installed by hand. An outdated
+  dependency that was not named is now upgraded too. New dependencies are installed with
+  `--as-dependency`, so `brew autoremove` can remove them once nothing needs them.
+  `brew safe-outdated` lists these installs and upgrades with the formulae that require them.
+
 ## [0.2.7] - 2026-11-04
 
 ### Fixed

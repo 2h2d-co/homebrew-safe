@@ -7,6 +7,7 @@ class DependencyPlanTest < Minitest::Test
   Candidate = Struct.new(
     :item, :type, :installed_version, :target_version, :latest_version, :target_publication_date,
     :safe, :date_unknown, :no_cutoff, :upgrade_commit_sha, :upgrade_source_path, :blocked_dependencies,
+    :required_by,
     keyword_init: true,
   )
   Item = Struct.new(:full_name)
@@ -52,7 +53,7 @@ class DependencyPlanTest < Minitest::Test
     assert curl.safe
   end
 
-  def test_installs_need_uninstalled_dependencies_named_in_the_same_install
+  def test_named_installs_satisfy_each_others_dependencies
     usage = formula("usage", installed: nil, target: "2.1")
     mise = formula("mise", installed: nil, target: "2026.10.1")
     node = formula("node", installed: nil, target: "24.1")
@@ -166,6 +167,88 @@ class DependencyPlanTest < Minitest::Test
     assert_equal ["dependency check failed: manifest unavailable"], jq.blocked_dependencies
   end
 
+  def test_installs_missing_dependencies_with_safe_targets_before_their_dependent
+    git = formula("git", installed: "2.56.0_1", target: "2.56.0_2")
+    brotli = formula("brotli", installed: nil, target: "1.2.1")
+    curl = formula("curl", installed: nil, target: "8.23.0")
+    requirements = {
+      ["git", "2.56.0_2"] => [requirement("brotli", "1.2.1"), requirement("curl", "8.23.0")],
+      ["curl", "8.23.0"] => [requirement("brotli", "1.2.1")],
+    }
+    lookups = []
+
+    result = plan(requirements:, dependencies: { "brotli" => brotli, "curl" => curl }, lookups:).apply([git])
+
+    assert_equal %w[brotli curl git], result.map { |candidate| candidate.item.full_name }
+    assert git.safe
+    assert brotli.safe
+    assert curl.safe
+    assert_nil git.required_by
+    assert_equal %w[git curl], brotli.required_by
+    assert_equal %w[git], curl.required_by
+    assert_equal %w[brotli curl], lookups
+  end
+
+  def test_upgrades_an_outdated_dependency_that_was_not_named
+    openssl = formula("openssl@3", installed: "3.6.1", target: "3.6.3")
+    curl = formula("curl", installed: "8.1", target: "8.2")
+    requirements = { ["curl", "8.2"] => [requirement("openssl@3", "3.6.2", installed: "3.6.1")] }
+
+    result = plan(requirements:, dependencies: { "openssl@3" => openssl }).apply([curl])
+
+    assert_equal [openssl, curl], result
+    assert openssl.safe
+    assert curl.safe
+    assert_equal %w[curl], openssl.required_by
+  end
+
+  def test_blocks_upgrade_when_a_missing_dependency_is_too_new_and_omits_the_dependency
+    git = formula("git", installed: "2.56.0_1", target: "2.56.0_2")
+    curl = formula("curl", installed: nil, target: nil, latest: "8.23.0", safe: false)
+    requirements = { ["git", "2.56.0_2"] => [requirement("curl", "8.23.0")] }
+
+    result = plan(requirements:, dependencies: { "curl" => curl }).apply([git])
+
+    assert_equal [git], result
+    refute git.safe
+    assert_equal ["curl >= 8.23.0 (not installed, install too new)"], git.blocked_dependencies
+  end
+
+  def test_drops_a_missing_dependency_when_its_dependent_falls_back_to_a_target_without_it
+    git = formula("git", installed: "2.55.0", target: "2.56.0_2")
+    curl = formula("curl", installed: nil, target: "8.20.0", latest: "8.23.0")
+    requirements = {
+      ["git", "2.56.0_2"] => [requirement("curl", "8.23.0")],
+      ["git", "2.56.0"] => [],
+    }
+    older_targets = { "git" => [VersionRef.new(version: "2.56.0")] }
+
+    result = plan(requirements:, older_targets:, dependencies: { "curl" => curl }).apply([git])
+
+    assert_equal [git], result
+    assert git.safe
+    assert_equal "2.56.0", git.target_version
+  end
+
+  def test_lists_a_blocked_missing_dependency_with_the_formula_it_blocks
+    git = formula("git", installed: "2.56.0_1", target: "2.56.0_2")
+    curl = formula("curl", installed: nil, target: "8.23.0")
+    libssh2 = formula("libssh2", installed: nil, target: nil, latest: "1.11.1_7", safe: false)
+    requirements = {
+      ["git", "2.56.0_2"] => [requirement("curl", "8.23.0")],
+      ["curl", "8.23.0"] => [requirement("libssh2", "1.11.1_7")],
+    }
+
+    result = plan(requirements:, dependencies: { "curl" => curl, "libssh2" => libssh2 }).apply([git])
+
+    assert_equal [curl, git], result
+    refute git.safe
+    assert_equal ["curl >= 8.23.0 (not installed, install blocked)"], git.blocked_dependencies
+    refute curl.safe
+    assert_equal %w[git], curl.required_by
+    assert_equal ["libssh2 >= 1.11.1_7 (not installed, install too new)"], curl.blocked_dependencies
+  end
+
   def test_ignores_casks_and_unsafe_formulae
     cask = Candidate.new(item: Item.new("firefox"), type: :cask, safe: true)
     too_new = formula("jq", installed: "1.7", target: nil, latest: "1.8", safe: false)
@@ -196,7 +279,7 @@ class DependencyPlanTest < Minitest::Test
     Requirement.new(name: name, minimum_version: minimum, installed_version: installed)
   end
 
-  def plan(requirements:, older_targets: {}, failures: {})
+  def plan(requirements:, older_targets: {}, failures: {}, dependencies: {}, lookups: [])
     remaining = older_targets.transform_values(&:dup)
     Safe::DependencyPlan.new(
       requirements_for: lambda { |candidate|
@@ -207,6 +290,10 @@ class DependencyPlanTest < Minitest::Test
       },
       next_target: ->(candidate) { remaining.fetch(candidate.item.full_name, []).shift },
       version_satisfies: ->(target, minimum) { Gem::Version.new(target.tr("_", ".")) >= Gem::Version.new(minimum.tr("_", ".")) },
+      dependency_candidate: lambda { |requirement|
+        lookups << requirement.name
+        dependencies[requirement.name]
+      },
     )
   end
 end

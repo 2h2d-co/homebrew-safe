@@ -16,6 +16,8 @@ module Safe
       :item, :type, :installed_version, :target_version, :latest_version,
       :target_publication_date, :publication_date, :before_value, :cutoff, :safe, :date_unknown, :no_cutoff,
       :upgrade_commit_sha, :upgrade_source_path, :upgrade_source_content, :blocked_dependencies,
+      # Names of the formulae that need this candidate when the dependency plan added it.
+      :required_by,
       keyword_init: true,
     )
 
@@ -26,13 +28,14 @@ module Safe
       @intermediate_targets = {}.compare_by_identity
     end
 
-    # Returns Array[Candidate]. Formula upgrades whose dependencies no planned
-    # upgrade satisfies fall back to older safe targets or are marked blocked.
+    # Returns Array[Candidate]. Missing or outdated dependencies with safe targets
+    # are added as install or upgrade candidates. Formula upgrades whose dependencies
+    # no planned candidate satisfies fall back to older safe targets or are marked blocked.
     def resolve
       apply_dependency_plan(resolve_candidates)
     end
 
-    # Named formulae satisfy each other's dependencies; other uninstalled dependencies block.
+    # Like resolve, for formulae that are not installed.
     def resolve_formula_install(formulae)
       apply_dependency_plan(resolve_formulae(formulae, mode: :install))
     end
@@ -70,7 +73,16 @@ module Safe
         },
         next_target: method(:next_intermediate_target),
         version_satisfies: ->(target, minimum) { PkgVersion.parse(target) >= PkgVersion.parse(minimum) },
+        dependency_candidate: method(:dependency_candidate),
       ).apply(candidates)
+    end
+
+    # An install candidate for a missing dependency, or an upgrade candidate for an
+    # outdated, unpinned one. Nil when the installed dependency has no upgrade.
+    def dependency_candidate(requirement)
+      formula = Formulary.factory(requirement.name)
+      mode = formula.any_version_installed? ? :upgrade : :install
+      resolve_formulae([formula], mode:).first
     end
 
     # Walks safe intermediate versions newest first, continuing from the candidate's current target.
